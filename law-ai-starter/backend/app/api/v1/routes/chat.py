@@ -7,5 +7,5 @@ router = APIRouter()
 
 
 @router.post("/chat/query", response_model=ChatQueryResponse)
-def query_law_assistant(payload: ChatQueryRequest) -> ChatQueryResponse:
+def query_chat(payload: ChatQueryRequest) -> ChatQueryResponse:
     return generate_mock_legal_response(payload.question)
