@@ -100,6 +100,14 @@ def build_confidence_note(confidence: ChatConfidence) -> str:
     )
 
 
+def build_record_reference(record: LegalSourceRecord) -> str:
+    return (
+        f"- {record.citation_label}\n"
+        f"  Law: {record.law_name}\n"
+        f"  Section title: {record.section_title}"
+    )
+
+
 def build_no_match_answer(
     question: str,
     category: dict[str, str],
@@ -133,20 +141,11 @@ def build_match_answer(
     primary = records[0]
 
     if confidence.level == "high":
-        opening = (
-            f"The strongest current match is {primary.citation_label} under "
-            f"{primary.law_name}, which relates to \"{primary.section_title}.\""
-        )
+        opening = "A strong current match was found in the prototype dataset."
     elif confidence.level == "medium":
-        opening = (
-            f"A reasonably relevant current match is {primary.citation_label} under "
-            f"{primary.law_name}, which relates to \"{primary.section_title}.\""
-        )
+        opening = "A reasonably relevant current match was found in the prototype dataset."
     else:
-        opening = (
-            f"A tentative current match is {primary.citation_label} under "
-            f"{primary.law_name}, which relates to \"{primary.section_title}.\""
-        )
+        opening = "A tentative current match was found in the prototype dataset."
 
     lines: list[str] = [
         "Matched legal information",
@@ -154,6 +153,9 @@ def build_match_answer(
         f"Confidence level: {confidence.level.upper()}",
         "",
         opening,
+        "",
+        "Primary matched provision:",
+        build_record_reference(primary),
         "",
         f"Plain-language summary: {primary.summary}",
         "",
@@ -168,12 +170,12 @@ def build_match_answer(
         lines.extend(
             [
                 "",
-                "Other potentially relevant provisions:",
+                "Other potentially relevant matched provisions:",
             ]
         )
 
         for record in records[1:]:
-            lines.append(f"- {record.citation_label} ({record.section_title})")
+            lines.append(build_record_reference(record))
 
     lines.extend(
         [
