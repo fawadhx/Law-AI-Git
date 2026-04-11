@@ -15,17 +15,25 @@ type ChatCategory = {
   label: string;
 };
 
+type ChatConfidence = {
+  level: string;
+  score: number;
+  matched_records: number;
+};
+
 type ChatQueryResponse = {
   answer: string;
   citations: Citation[];
   disclaimer: string;
   category: ChatCategory;
+  confidence: ChatConfidence;
 };
 
 type Message = {
   role: "user" | "assistant";
   content: string;
   category?: ChatCategory;
+  confidence?: ChatConfidence;
 };
 
 const API_BASE_URL =
@@ -81,6 +89,30 @@ const primaryButton: CSSProperties = {
   cursor: "pointer",
 };
 
+function getConfidenceBadgeStyle(level?: string): CSSProperties {
+  if (level === "high") {
+    return {
+      background: "rgba(34, 197, 94, 0.16)",
+      border: "1px solid rgba(34, 197, 94, 0.28)",
+      color: "#bbf7d0",
+    };
+  }
+
+  if (level === "medium") {
+    return {
+      background: "rgba(250, 204, 21, 0.14)",
+      border: "1px solid rgba(250, 204, 21, 0.26)",
+      color: "#fde68a",
+    };
+  }
+
+  return {
+    background: "rgba(248, 113, 113, 0.14)",
+    border: "1px solid rgba(248, 113, 113, 0.24)",
+    color: "#fecaca",
+  };
+}
+
 export default function ChatPage() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -132,6 +164,7 @@ export default function ChatPage() {
           role: "assistant",
           content: result.answer,
           category: result.category,
+          confidence: result.confidence,
         },
       ]);
       setQuestion("");
@@ -200,7 +233,7 @@ export default function ChatPage() {
             >
               Ask a legal-information question and the system will try to match it
               against the current structured prototype dataset, return supporting
-              citations, and classify the issue type.
+              citations, classify the issue type, and show match confidence.
             </p>
           </div>
 
@@ -284,25 +317,55 @@ export default function ChatPage() {
                     {message.role === "user" ? "You" : "Law AI"}
                   </div>
 
-                  {message.category && (
-                    <div
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "6px 10px",
-                        borderRadius: "999px",
-                        background: "rgba(126, 162, 255, 0.12)",
-                        border: "1px solid rgba(126, 162, 255, 0.22)",
-                        color: "#dfe7ff",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        marginBottom: "12px",
-                      }}
-                    >
-                      Detected category: {message.category.label}
-                    </div>
-                  )}
+                  {message.role === "assistant" &&
+                    (message.category || message.confidence) && (
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                          marginBottom: "12px",
+                        }}
+                      >
+                        {message.category && (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              padding: "6px 10px",
+                              borderRadius: "999px",
+                              background: "rgba(126, 162, 255, 0.12)",
+                              border: "1px solid rgba(126, 162, 255, 0.22)",
+                              color: "#dfe7ff",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            Detected category: {message.category.label}
+                          </div>
+                        )}
+
+                        {message.confidence && (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              padding: "6px 10px",
+                              borderRadius: "999px",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              ...getConfidenceBadgeStyle(
+                                message.confidence.level
+                              ),
+                            }}
+                          >
+                            Confidence: {message.confidence.level.toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                   <div
                     style={{
@@ -413,6 +476,7 @@ export default function ChatPage() {
                   "Someone is threatening me online",
                   "Can police keep a person more than 24 hours?",
                   "Someone harmed my reputation on social media",
+                  "Somebody did something bad",
                 ].map((example) => (
                   <button
                     key={example}
@@ -465,6 +529,143 @@ export default function ChatPage() {
                 {latestResponse
                   ? `Structured category key: ${latestResponse.category.key}`
                   : "Submit a question to see the detected category returned by the backend."}
+              </div>
+            </section>
+
+            <section style={{ ...cardStyle, padding: "24px" }}>
+              <div
+                style={{
+                  fontSize: "14px",
+                  color: "#b9caff",
+                  marginBottom: "8px",
+                }}
+              >
+                Match confidence
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  marginBottom: "14px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {latestResponse?.confidence?.level
+                    ? latestResponse.confidence.level.toUpperCase()
+                    : "No confidence yet"}
+                </div>
+
+                {latestResponse?.confidence && (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "6px 10px",
+                      borderRadius: "999px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      ...getConfidenceBadgeStyle(
+                        latestResponse.confidence.level
+                      ),
+                    }}
+                  >
+                    Active match
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                <div
+                  style={{
+                    background: "rgba(10, 19, 43, 0.95)",
+                    border: "1px solid rgba(132, 151, 220, 0.14)",
+                    borderRadius: "18px",
+                    padding: "16px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.6px",
+                      color: "#a9c1ff",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Top match score
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "20px",
+                      fontWeight: 700,
+                      color: "#ffffff",
+                    }}
+                  >
+                    {latestResponse?.confidence?.score ?? "--"}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    background: "rgba(10, 19, 43, 0.95)",
+                    border: "1px solid rgba(132, 151, 220, 0.14)",
+                    borderRadius: "18px",
+                    padding: "16px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.6px",
+                      color: "#a9c1ff",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Matched records
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "20px",
+                      fontWeight: 700,
+                      color: "#ffffff",
+                    }}
+                  >
+                    {latestResponse?.confidence?.matched_records ?? "--"}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    color: "#dbe4ff",
+                    lineHeight: 1.7,
+                    fontSize: "15px",
+                  }}
+                >
+                  {latestResponse?.confidence
+                    ? latestResponse.confidence.level === "high"
+                      ? "The current prototype found a comparatively strong internal legal-source match."
+                      : latestResponse.confidence.level === "medium"
+                      ? "The current prototype found a reasonable match, but the result should still be read cautiously."
+                      : "The current prototype found only a limited or tentative match, so this result should be treated with extra caution."
+                    : "Submit a question to see backend confidence scoring for the current prototype match."}
+                </div>
               </div>
             </section>
 
