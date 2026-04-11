@@ -1,4 +1,4 @@
-from app.schemas.chat import Citation, ChatQueryResponse
+from app.schemas.chat import ChatCategory, ChatQueryResponse, Citation
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_classification_service import detect_question_category
 from app.services.legal_retrieval_service import retrieve_legal_sources
@@ -62,12 +62,11 @@ def build_category_guidance(category_key: str) -> str:
 
 def build_no_match_answer(question: str, category: dict[str, str]) -> str:
     return (
-        f"Detected category: {category['label']}\n\n"
         "No strong legal-source match was found in the current prototype dataset.\n\n"
         "What this means:\n"
         "- The system could not confidently map your question to the small internal sample of legal records.\n"
         "- This does not mean no law applies. It only means the current prototype dataset is still limited.\n\n"
-        "Category guidance:\n"
+        "Issue-type guidance:\n"
         f"- {build_category_guidance(category['key'])}\n\n"
         "Try asking with clearer legal terms such as:\n"
         "- theft\n"
@@ -82,15 +81,12 @@ def build_no_match_answer(question: str, category: dict[str, str]) -> str:
 
 
 def build_match_answer(
-    question: str,
     records: list[LegalSourceRecord],
     category: dict[str, str],
 ) -> str:
     primary = records[0]
 
     lines: list[str] = [
-        f"Detected category: {category['label']}",
-        "",
         "Matched legal information",
         "",
         (
@@ -100,7 +96,7 @@ def build_match_answer(
         "",
         f"Plain-language summary: {primary.summary}",
         "",
-        "Category guidance:",
+        "Issue-type guidance:",
         build_category_guidance(category["key"]),
     ]
 
@@ -138,17 +134,22 @@ def build_answer(
     if not records:
         return build_no_match_answer(question, category)
 
-    return build_match_answer(question, records, category)
+    return build_match_answer(records, category)
 
 
 def generate_mock_legal_response(question: str) -> ChatQueryResponse:
     records = retrieve_legal_sources(question, limit=3)
-    category = detect_question_category(question, records)
-    answer = build_answer(question, records, category)
+    detected_category = detect_question_category(question, records)
+
+    answer = build_answer(question, records, detected_category)
     citations = build_citations(records)
 
     return ChatQueryResponse(
         answer=answer,
         citations=citations,
         disclaimer=LEGAL_DISCLAIMER,
+        category=ChatCategory(
+            key=detected_category["key"],
+            label=detected_category["label"],
+        ),
     )

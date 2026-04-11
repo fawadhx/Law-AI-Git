@@ -1,47 +1,58 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { askLawQuestion } from "@/lib/api";
-import type { ChatMessage, Citation } from "@/types/chat";
+import { useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 
-const pageWrap: React.CSSProperties = {
+type Citation = {
+  title: string;
+  section: string;
+  note: string;
+};
+
+type ChatCategory = {
+  key: string;
+  label: string;
+};
+
+type ChatQueryResponse = {
+  answer: string;
+  citations: Citation[];
+  disclaimer: string;
+  category: ChatCategory;
+};
+
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  category?: ChatCategory;
+};
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+
+const pageWrap: CSSProperties = {
   minHeight: "100vh",
   background:
-    "radial-gradient(circle at top, rgba(45,78,180,0.20), transparent 24%), linear-gradient(180deg, #071226 0%, #09152b 100%)",
+    "radial-gradient(circle at top, rgba(45,78,180,0.18), transparent 24%), linear-gradient(180deg, #071226 0%, #09152b 100%)",
   color: "#f4f7ff",
   padding: "32px 0 72px",
 };
 
-const containerStyle: React.CSSProperties = {
+const containerStyle: CSSProperties = {
   maxWidth: "1280px",
   margin: "0 auto",
   padding: "0 24px",
 };
 
-const cardStyle: React.CSSProperties = {
+const cardStyle: CSSProperties = {
   background: "rgba(18, 28, 58, 0.92)",
   border: "1px solid rgba(120, 150, 255, 0.16)",
   borderRadius: "22px",
   boxShadow: "0 12px 34px rgba(0, 0, 0, 0.22)",
 };
 
-const primaryButton: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  border: "none",
-  borderRadius: "14px",
-  padding: "14px 20px",
-  background: "#7ea2ff",
-  color: "#081227",
-  fontWeight: 700,
-  fontSize: "15px",
-  cursor: "pointer",
-  textDecoration: "none",
-};
-
-const secondaryButton: React.CSSProperties = {
+const secondaryButton: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -56,87 +67,85 @@ const secondaryButton: React.CSSProperties = {
   border: "1px solid rgba(150, 170, 255, 0.26)",
 };
 
-const suggestionButton: React.CSSProperties = {
-  background: "rgba(126, 162, 255, 0.08)",
-  color: "#dfe7ff",
-  border: "1px solid rgba(126, 162, 255, 0.18)",
-  borderRadius: "999px",
-  padding: "10px 14px",
-  fontSize: "14px",
+const primaryButton: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "none",
+  borderRadius: "14px",
+  padding: "14px 20px",
+  background: "#7ea2ff",
+  color: "#081227",
+  fontWeight: 700,
+  fontSize: "15px",
   cursor: "pointer",
 };
-
-const examples = [
-  "What are my rights if a police officer stops me for questioning?",
-  "If someone threatens me online, what laws may apply?",
-  "What punishment may apply for theft under basic criminal law?",
-  "Which legal provisions can overlap in a harassment case?",
-];
 
 export default function ChatPage() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [citations, setCitations] = useState<Citation[]>([]);
-  const [disclaimer, setDisclaimer] = useState(
-    "This system is intended for legal information and public awareness only. It should not be treated as a substitute for professional legal advice or representation.",
-  );
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [messages, setMessages] = useState<Message[]>([
     {
-      id: "welcome-assistant",
       role: "assistant",
       content:
-        "Welcome to Law AI. Ask a legal-information question and the system will return a structured response with citation blocks.",
+        "Ask a legal-information question to receive a prototype response based on the current structured legal-source records.",
     },
   ]);
+  const [latestResponse, setLatestResponse] = useState<ChatQueryResponse | null>(
+    null
+  );
 
-  async function handleSubmit() {
-    const trimmed = question.trim();
-    if (!trimmed || loading) return;
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
 
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: trimmed,
-    };
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion || loading) return;
 
-    setMessages((current) => [...current, userMessage]);
-    setQuestion("");
-    setError("");
     setLoading(true);
+    setError("");
+
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: trimmedQuestion },
+    ]);
 
     try {
-      const response = await askLawQuestion(trimmed);
+      const response = await fetch(`${API_BASE_URL}/api/v1/chat/query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question: trimmedQuestion }),
+      });
 
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: response.answer,
-      };
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
 
-      setMessages((current) => [...current, assistantMessage]);
-      setCitations(response.citations || []);
-      setDisclaimer(
-        response.disclaimer ||
-          "This system is intended for legal information and public awareness only.",
-      );
+      const result: ChatQueryResponse = await response.json();
+
+      setLatestResponse(result);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: result.answer,
+          category: result.category,
+        },
+      ]);
+      setQuestion("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch legal response.");
+      const message =
+        err instanceof Error ? err.message : "Failed to fetch response.";
+      setError(message);
     } finally {
       setLoading(false);
     }
   }
 
-  function handleExampleClick(example: string) {
+  function applyExample(example: string) {
     setQuestion(example);
-    setError("");
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void handleSubmit();
-    }
   }
 
   return (
@@ -166,7 +175,7 @@ export default function ChatPage() {
                 marginBottom: "12px",
               }}
             >
-              Public legal-information chat
+              Legal information assistant
             </div>
 
             <h1
@@ -177,21 +186,21 @@ export default function ChatPage() {
                 margin: "0 0 10px",
               }}
             >
-              Legal Information Chat
+              Legal Chat
             </h1>
 
             <p
               style={{
                 margin: 0,
-                maxWidth: "780px",
+                maxWidth: "860px",
                 color: "#c8d6f7",
                 fontSize: "18px",
                 lineHeight: 1.65,
               }}
             >
-              Ask a question about rights, punishments, public-officer authority,
-              or overlapping legal provisions. The product should explain clearly,
-              cite relevant sections, and avoid presenting itself as a lawyer.
+              Ask a legal-information question and the system will try to match it
+              against the current structured prototype dataset, return supporting
+              citations, and classify the issue type.
             </p>
           </div>
 
@@ -199,8 +208,8 @@ export default function ChatPage() {
             <Link href="/" style={secondaryButton}>
               Back to Homepage
             </Link>
-            <Link href="/admin" style={secondaryButton}>
-              Admin
+            <Link href="/officer-authority" style={secondaryButton}>
+              Officer Authority
             </Link>
           </div>
         </div>
@@ -208,7 +217,7 @@ export default function ChatPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.15fr 0.85fr",
+            gridTemplateColumns: "1.25fr 0.75fr",
             gap: "24px",
             alignItems: "start",
           }}
@@ -216,301 +225,360 @@ export default function ChatPage() {
           <section style={{ ...cardStyle, padding: "24px" }}>
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-                marginBottom: "18px",
-                flexWrap: "wrap",
+                fontSize: "14px",
+                color: "#b9caff",
+                marginBottom: "8px",
               }}
             >
-              <div>
-                <div style={{ fontSize: "14px", color: "#b9caff", marginBottom: "6px" }}>
-                  Conversation
-                </div>
-                <div style={{ fontSize: "22px", fontWeight: 700 }}>Chat history</div>
-              </div>
-
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  borderRadius: "999px",
-                  padding: "8px 12px",
-                  background: loading
-                    ? "rgba(255, 196, 90, 0.12)"
-                    : "rgba(126, 162, 255, 0.12)",
-                  border: loading
-                    ? "1px solid rgba(255, 196, 90, 0.22)"
-                    : "1px solid rgba(126, 162, 255, 0.22)",
-                  color: loading ? "#ffd37c" : "#b9caff",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                }}
-              >
-                <span
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "999px",
-                    background: loading ? "#ffd37c" : "#7ea2ff",
-                    display: "inline-block",
-                  }}
-                />
-                {loading ? "Generating response..." : "Ready"}
-              </div>
+              Conversation
+            </div>
+            <div
+              style={{
+                fontSize: "24px",
+                fontWeight: 700,
+                marginBottom: "18px",
+              }}
+            >
+              Ask a legal-information question
             </div>
 
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: "16px",
-                maxHeight: "760px",
-                overflowY: "auto",
-                paddingRight: "4px",
+                gap: "14px",
+                marginBottom: "20px",
               }}
             >
-              {messages.map((message) => {
-                const isUser = message.role === "user";
-
-                return (
-                  <div
-                    key={message.id}
-                    style={{
-                      alignSelf: isUser ? "flex-end" : "flex-start",
-                      width: isUser ? "78%" : "100%",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        letterSpacing: "1px",
-                        textTransform: "uppercase",
-                        color: isUser ? "#a9c1ff" : "#d5def7",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      {isUser ? "User" : "Assistant"}
-                    </div>
-
-                    <div
-                      style={{
-                        background: isUser
-                          ? "linear-gradient(180deg, rgba(43, 70, 150, 0.72), rgba(28, 46, 102, 0.82))"
-                          : "rgba(11, 20, 45, 0.95)",
-                        border: isUser
-                          ? "1px solid rgba(126, 162, 255, 0.22)"
-                          : "1px solid rgba(132, 151, 220, 0.16)",
-                        borderRadius: "18px",
-                        padding: "18px 18px",
-                        color: "#f3f6ff",
-                        lineHeight: 1.65,
-                        fontSize: "17px",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {message.content}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {loading && (
-                <div style={{ width: "100%" }}>
+              {messages.map((message, index) => (
+                <div
+                  key={`${message.role}-${index}`}
+                  style={{
+                    alignSelf:
+                      message.role === "user" ? "flex-end" : "stretch",
+                    maxWidth: message.role === "user" ? "78%" : "100%",
+                    marginLeft: message.role === "user" ? "auto" : 0,
+                    background:
+                      message.role === "user"
+                        ? "rgba(126, 162, 255, 0.16)"
+                        : "rgba(10, 19, 43, 0.95)",
+                    border:
+                      message.role === "user"
+                        ? "1px solid rgba(126, 162, 255, 0.22)"
+                        : "1px solid rgba(132, 151, 220, 0.14)",
+                    borderRadius: "18px",
+                    padding: "16px",
+                  }}
+                >
                   <div
                     style={{
-                      fontSize: "12px",
+                      fontSize: "13px",
                       fontWeight: 700,
-                      letterSpacing: "1px",
+                      letterSpacing: "0.5px",
                       textTransform: "uppercase",
-                      color: "#d5def7",
+                      color:
+                        message.role === "user" ? "#cfe0ff" : "#a9c1ff",
                       marginBottom: "8px",
                     }}
                   >
-                    Assistant
+                    {message.role === "user" ? "You" : "Law AI"}
                   </div>
+
+                  {message.category && (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "6px 10px",
+                        borderRadius: "999px",
+                        background: "rgba(126, 162, 255, 0.12)",
+                        border: "1px solid rgba(126, 162, 255, 0.22)",
+                        color: "#dfe7ff",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        marginBottom: "12px",
+                      }}
+                    >
+                      Detected category: {message.category.label}
+                    </div>
+                  )}
 
                   <div
                     style={{
-                      background: "rgba(11, 20, 45, 0.95)",
-                      border: "1px solid rgba(132, 151, 220, 0.16)",
-                      borderRadius: "18px",
-                      padding: "18px",
-                      color: "#d2dcfb",
+                      whiteSpace: "pre-wrap",
+                      color: "#edf2ff",
+                      lineHeight: 1.8,
+                      fontSize: "15px",
                     }}
                   >
-                    Thinking about the most relevant legal-information response...
+                    {message.content}
                   </div>
                 </div>
-              )}
+              ))}
             </div>
-          </section>
 
-          <aside style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-            <section style={{ ...cardStyle, padding: "22px" }}>
-              <div style={{ fontSize: "14px", color: "#b9caff", marginBottom: "8px" }}>
-                Ask a question
-              </div>
-              <div style={{ fontSize: "24px", fontWeight: 700, marginBottom: "16px" }}>
-                Describe the legal issue clearly
-              </div>
+            <form onSubmit={handleSubmit}>
+              <label
+                htmlFor="question"
+                style={{
+                  display: "block",
+                  fontSize: "14px",
+                  color: "#b9caff",
+                  marginBottom: "10px",
+                }}
+              >
+                Your question
+              </label>
 
               <textarea
+                id="question"
                 value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Example: What are my rights if a police officer stops me for questioning, and what should I understand about their authority?"
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Example: Can police detain a person for more than 24 hours?"
+                rows={5}
                 style={{
                   width: "100%",
-                  minHeight: "180px",
                   resize: "vertical",
-                  padding: "16px",
                   borderRadius: "16px",
-                  background: "rgba(8, 18, 39, 0.86)",
-                  border: "1px solid rgba(132, 151, 220, 0.18)",
+                  border: "1px solid rgba(126, 162, 255, 0.22)",
+                  background: "rgba(8, 17, 38, 0.95)",
                   color: "#f4f7ff",
+                  padding: "16px",
+                  fontSize: "15px",
+                  lineHeight: 1.7,
                   outline: "none",
-                  fontSize: "16px",
-                  lineHeight: 1.6,
                   marginBottom: "14px",
                 }}
               />
 
-              <button
-                onClick={() => void handleSubmit()}
-                disabled={loading || !question.trim()}
+              <div
                 style={{
-                  ...primaryButton,
-                  width: "100%",
-                  opacity: loading || !question.trim() ? 0.65 : 1,
-                  cursor: loading || !question.trim() ? "not-allowed" : "pointer",
+                  display: "flex",
+                  gap: "12px",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  marginBottom: error ? "12px" : 0,
                 }}
               >
-                {loading ? "Generating response..." : "Ask question"}
-              </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    ...primaryButton,
+                    opacity: loading ? 0.7 : 1,
+                  }}
+                >
+                  {loading ? "Thinking..." : "Ask Question"}
+                </button>
+              </div>
 
-              <p
+              {error && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    borderRadius: "16px",
+                    padding: "14px 16px",
+                    background: "rgba(65, 18, 28, 0.8)",
+                    border: "1px solid rgba(255, 120, 120, 0.22)",
+                    color: "#ffd7df",
+                    lineHeight: 1.7,
+                  }}
+                >
+                  Failed to fetch response: {error}
+                </div>
+              )}
+            </form>
+
+            <div style={{ marginTop: "20px" }}>
+              <div
                 style={{
-                  color: "#c6d3f3",
-                  lineHeight: 1.6,
                   fontSize: "14px",
-                  marginTop: "14px",
-                  marginBottom: 0,
+                  color: "#b9caff",
+                  marginBottom: "10px",
                 }}
               >
-                Press <strong>Enter</strong> to submit, or use <strong>Shift + Enter</strong> for a new line.
-              </p>
-            </section>
-
-            <section style={{ ...cardStyle, padding: "22px" }}>
-              <div style={{ fontSize: "14px", color: "#b9caff", marginBottom: "12px" }}>
                 Quick examples
               </div>
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                {examples.map((example) => (
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                }}
+              >
+                {[
+                  "What punishment can happen if someone steals property?",
+                  "Someone is threatening me online",
+                  "Can police keep a person more than 24 hours?",
+                  "Someone harmed my reputation on social media",
+                ].map((example) => (
                   <button
                     key={example}
-                    onClick={() => handleExampleClick(example)}
-                    style={suggestionButton}
+                    type="button"
+                    onClick={() => applyExample(example)}
+                    style={{
+                      borderRadius: "999px",
+                      padding: "10px 14px",
+                      background: "rgba(126, 162, 255, 0.10)",
+                      border: "1px solid rgba(126, 162, 255, 0.20)",
+                      color: "#dfe7ff",
+                      fontSize: "13px",
+                      cursor: "pointer",
+                    }}
                   >
                     {example}
                   </button>
                 ))}
               </div>
-            </section>
+            </div>
+          </section>
 
-            {error && (
-              <section
+          <aside style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <section style={{ ...cardStyle, padding: "24px" }}>
+              <div
                 style={{
-                  ...cardStyle,
-                  padding: "18px",
-                  background: "rgba(58, 18, 32, 0.75)",
-                  border: "1px solid rgba(255, 118, 145, 0.24)",
+                  fontSize: "14px",
+                  color: "#b9caff",
+                  marginBottom: "8px",
                 }}
               >
-                <div style={{ fontWeight: 700, marginBottom: "8px", color: "#ffd2db" }}>
-                  Request error
-                </div>
-                <div style={{ color: "#ffe7ec", lineHeight: 1.6 }}>{error}</div>
-              </section>
-            )}
-
-            <section style={{ ...cardStyle, padding: "22px" }}>
-              <div style={{ fontSize: "14px", color: "#b9caff", marginBottom: "8px" }}>
-                Answer support
+                Detected issue type
               </div>
-              <div style={{ fontSize: "24px", fontWeight: 700, marginBottom: "16px" }}>
+              <div
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  marginBottom: "12px",
+                }}
+              >
+                {latestResponse?.category?.label || "No category yet"}
+              </div>
+              <div
+                style={{
+                  color: "#dbe4ff",
+                  lineHeight: 1.7,
+                  fontSize: "15px",
+                }}
+              >
+                {latestResponse
+                  ? `Structured category key: ${latestResponse.category.key}`
+                  : "Submit a question to see the detected category returned by the backend."}
+              </div>
+            </section>
+
+            <section style={{ ...cardStyle, padding: "24px" }}>
+              <div
+                style={{
+                  fontSize: "14px",
+                  color: "#b9caff",
+                  marginBottom: "8px",
+                }}
+              >
                 Citation panel
+              </div>
+              <div
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  marginBottom: "16px",
+                }}
+              >
+                Supporting records
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                {citations.length === 0 ? (
-                  <div
-                    style={{
-                      background: "rgba(10, 19, 43, 0.95)",
-                      border: "1px solid rgba(132, 151, 220, 0.14)",
-                      borderRadius: "16px",
-                      padding: "16px",
-                      color: "#c6d3f3",
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    Citation records will appear here after the assistant returns a response.
-                  </div>
-                ) : (
-                  citations.map((citation, index) => (
+                {latestResponse?.citations?.length ? (
+                  latestResponse.citations.map((citation, index) => (
                     <div
                       key={`${citation.title}-${index}`}
                       style={{
                         background: "rgba(10, 19, 43, 0.95)",
                         border: "1px solid rgba(132, 151, 220, 0.14)",
-                        borderRadius: "16px",
+                        borderRadius: "18px",
                         padding: "16px",
                       }}
                     >
                       <div
                         style={{
-                          fontSize: "20px",
+                          fontSize: "16px",
                           fontWeight: 700,
-                          marginBottom: "8px",
                           color: "#ffffff",
+                          marginBottom: "8px",
                         }}
                       >
                         {citation.title}
                       </div>
                       <div
                         style={{
-                          color: "#b9caff",
-                          fontSize: "14px",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.6px",
+                          color: "#a9c1ff",
                           marginBottom: "8px",
                         }}
                       >
-                        Section: {citation.section}
+                        {citation.section}
                       </div>
-                      <div style={{ color: "#dbe4ff", lineHeight: 1.6 }}>{citation.note}</div>
+                      <div
+                        style={{
+                          color: "#c6d3f3",
+                          lineHeight: 1.7,
+                          fontSize: "14px",
+                        }}
+                      >
+                        {citation.note}
+                      </div>
                     </div>
                   ))
+                ) : (
+                  <div
+                    style={{
+                      background: "rgba(10, 19, 43, 0.95)",
+                      border: "1px solid rgba(132, 151, 220, 0.14)",
+                      borderRadius: "18px",
+                      padding: "16px",
+                      color: "#c6d3f3",
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    No citations yet. Ask a question to view matched legal-source
+                    records.
+                  </div>
                 )}
               </div>
             </section>
 
-            <section
-              style={{
-                ...cardStyle,
-                padding: "20px",
-                background: "linear-gradient(180deg, rgba(58, 22, 32, 0.75), rgba(45, 18, 26, 0.78))",
-                border: "1px solid rgba(255, 150, 170, 0.18)",
-              }}
-            >
-              <div style={{ fontSize: "15px", fontWeight: 700, marginBottom: "10px" }}>
-                Important legal boundary
+            <section style={{ ...cardStyle, padding: "24px" }}>
+              <div
+                style={{
+                  fontSize: "14px",
+                  color: "#b9caff",
+                  marginBottom: "8px",
+                }}
+              >
+                Legal boundary
               </div>
-              <div style={{ color: "#ffe7ec", lineHeight: 1.7, fontSize: "15px" }}>
-                {disclaimer}
+              <div
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  marginBottom: "12px",
+                }}
+              >
+                Prototype disclaimer
+              </div>
+              <div
+                style={{
+                  color: "#dbe4ff",
+                  lineHeight: 1.7,
+                  fontSize: "15px",
+                }}
+              >
+                {latestResponse?.disclaimer ||
+                  "This system is for legal information and public awareness only. It must not be treated as a lawyer or a substitute for legal advice."}
               </div>
             </section>
           </aside>

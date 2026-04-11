@@ -7,11 +7,17 @@ class Citation(BaseModel):
     note: str
 
 
+class ChatCategory(BaseModel):
+    key: str
+    label: str
+
+
 class ChatQueryRequest(BaseModel):
-    question: str = Field(..., min_length=2, max_length=2000)
+    question: str
 
 
 class ChatQueryResponse(BaseModel):
     answer: str
-    citations: list[Citation]
+    citations: list[Citation] = Field(default_factory=list)
     disclaimer: str
+    category: ChatCategory
