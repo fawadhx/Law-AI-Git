@@ -8,6 +8,7 @@ type Citation = {
   title: string;
   section: string;
   note: string;
+  excerpt: string;
 };
 
 type ChatCategory = {
@@ -728,10 +729,45 @@ export default function ChatPage() {
                           color: "#c6d3f3",
                           lineHeight: 1.7,
                           fontSize: "14px",
+                          marginBottom: citation.excerpt ? "12px" : 0,
                         }}
                       >
                         {citation.note}
                       </div>
+
+                      {citation.excerpt && (
+                        <div
+                          style={{
+                            background: "rgba(126, 162, 255, 0.08)",
+                            border: "1px solid rgba(126, 162, 255, 0.16)",
+                            borderRadius: "14px",
+                            padding: "12px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.6px",
+                              color: "#b9caff",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            Source excerpt
+                          </div>
+                          <div
+                            style={{
+                              color: "#edf2ff",
+                              lineHeight: 1.7,
+                              fontSize: "14px",
+                              fontStyle: "italic",
+                            }}
+                          >
+                            “{citation.excerpt}”
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (

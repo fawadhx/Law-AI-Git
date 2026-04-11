@@ -19,6 +19,7 @@ def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
                 title=record.source_title,
                 section=f"{record.citation_label} — {record.section_title}",
                 note=record.summary,
+                excerpt=record.excerpt,
             )
         )
 
@@ -105,7 +106,7 @@ def build_no_match_answer(
     confidence: ChatConfidence,
 ) -> str:
     return (
-        f"No strong legal-source match was found in the current prototype dataset.\n\n"
+        "No strong legal-source match was found in the current prototype dataset.\n\n"
         f"Confidence level: {confidence.level.upper()}\n\n"
         "What this means:\n"
         "- The system could not confidently map your question to the current internal legal records.\n"

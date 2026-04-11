@@ -5,6 +5,7 @@ class Citation(BaseModel):
     title: str
     section: str
     note: str
+    excerpt: str = ""
 
 
 class ChatCategory(BaseModel):
