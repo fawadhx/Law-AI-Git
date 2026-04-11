@@ -114,6 +114,92 @@ function getConfidenceBadgeStyle(level?: string): CSSProperties {
   };
 }
 
+function getShortExcerpt(text?: string, maxLength: number = 140): string {
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trim()}...`;
+}
+
+function getAnswerStatusConfig(confidence?: ChatConfidence): {
+  label: string;
+  description: string;
+  style: CSSProperties;
+} | null {
+  if (!confidence) return null;
+
+  if (confidence.level === "high") {
+    return {
+      label: "Strong match",
+      description: "The current prototype found a comparatively strong legal-source match.",
+      style: {
+        background: "rgba(34, 197, 94, 0.14)",
+        border: "1px solid rgba(34, 197, 94, 0.24)",
+        color: "#dcfce7",
+      },
+    };
+  }
+
+  if (confidence.level === "medium") {
+    return {
+      label: "Reasonable match",
+      description: "The current prototype found a reasonable match, but the result should still be read cautiously.",
+      style: {
+        background: "rgba(250, 204, 21, 0.12)",
+        border: "1px solid rgba(250, 204, 21, 0.22)",
+        color: "#fef3c7",
+      },
+    };
+  }
+
+  return {
+    label: "Tentative match",
+    description: "The current prototype found only a limited or tentative match, so this result should be treated with extra caution.",
+    style: {
+      background: "rgba(248, 113, 113, 0.12)",
+      border: "1px solid rgba(248, 113, 113, 0.22)",
+      color: "#fee2e2",
+    },
+  };
+}
+
+const EXAMPLE_GROUPS = [
+  {
+    title: "Theft / Property",
+    examples: [
+      "What punishment can happen if someone steals property?",
+      "Does theft require dishonest taking of movable property?",
+    ],
+  },
+  {
+    title: "Threats / Intimidation",
+    examples: [
+      "Someone is threatening me online",
+      "What law may apply if someone threatens my reputation or property?",
+    ],
+  },
+  {
+    title: "Police / Detention",
+    examples: [
+      "Can police keep a person more than 24 hours?",
+      "When may police arrest without a warrant?",
+    ],
+  },
+  {
+    title: "Reputation / Online Harm",
+    examples: [
+      "Someone harmed my reputation on social media",
+      "What PECA section may apply to online dignity or privacy harm?",
+    ],
+  },
+  {
+    title: "General / Weak Match",
+    examples: [
+      "I have some legal issue",
+      "Somebody did something bad",
+    ],
+  },
+];
+
 export default function ChatPage() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -284,102 +370,140 @@ export default function ChatPage() {
                 marginBottom: "20px",
               }}
             >
-              {messages.map((message, index) => (
-                <div
-                  key={`${message.role}-${index}`}
-                  style={{
-                    alignSelf:
-                      message.role === "user" ? "flex-end" : "stretch",
-                    maxWidth: message.role === "user" ? "78%" : "100%",
-                    marginLeft: message.role === "user" ? "auto" : 0,
-                    background:
-                      message.role === "user"
-                        ? "rgba(126, 162, 255, 0.16)"
-                        : "rgba(10, 19, 43, 0.95)",
-                    border:
-                      message.role === "user"
-                        ? "1px solid rgba(126, 162, 255, 0.22)"
-                        : "1px solid rgba(132, 151, 220, 0.14)",
-                    borderRadius: "18px",
-                    padding: "16px",
-                  }}
-                >
+              {messages.map((message, index) => {
+                const statusConfig =
+                  message.role === "assistant"
+                    ? getAnswerStatusConfig(message.confidence)
+                    : null;
+
+                return (
                   <div
+                    key={`${message.role}-${index}`}
                     style={{
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      letterSpacing: "0.5px",
-                      textTransform: "uppercase",
-                      color:
-                        message.role === "user" ? "#cfe0ff" : "#a9c1ff",
-                      marginBottom: "8px",
+                      alignSelf:
+                        message.role === "user" ? "flex-end" : "stretch",
+                      maxWidth: message.role === "user" ? "78%" : "100%",
+                      marginLeft: message.role === "user" ? "auto" : 0,
+                      background:
+                        message.role === "user"
+                          ? "rgba(126, 162, 255, 0.16)"
+                          : "rgba(10, 19, 43, 0.95)",
+                      border:
+                        message.role === "user"
+                          ? "1px solid rgba(126, 162, 255, 0.22)"
+                          : "1px solid rgba(132, 151, 220, 0.14)",
+                      borderRadius: "18px",
+                      padding: "16px",
                     }}
                   >
-                    {message.role === "user" ? "You" : "Law AI"}
-                  </div>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        letterSpacing: "0.5px",
+                        textTransform: "uppercase",
+                        color:
+                          message.role === "user" ? "#cfe0ff" : "#a9c1ff",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      {message.role === "user" ? "You" : "Law AI"}
+                    </div>
 
-                  {message.role === "assistant" &&
-                    (message.category || message.confidence) && (
+                    {statusConfig && (
                       <div
                         style={{
-                          display: "flex",
-                          gap: "8px",
-                          flexWrap: "wrap",
+                          borderRadius: "16px",
+                          padding: "12px 14px",
                           marginBottom: "12px",
+                          ...statusConfig.style,
                         }}
                       >
-                        {message.category && (
-                          <div
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "8px",
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              background: "rgba(126, 162, 255, 0.12)",
-                              border: "1px solid rgba(126, 162, 255, 0.22)",
-                              color: "#dfe7ff",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                            }}
-                          >
-                            Detected category: {message.category.label}
-                          </div>
-                        )}
-
-                        {message.confidence && (
-                          <div
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "8px",
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              fontSize: "12px",
-                              fontWeight: 700,
-                              ...getConfidenceBadgeStyle(
-                                message.confidence.level
-                              ),
-                            }}
-                          >
-                            Confidence: {message.confidence.level.toUpperCase()}
-                          </div>
-                        )}
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.6px",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          {statusConfig.label}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "14px",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          {statusConfig.description}
+                        </div>
                       </div>
                     )}
 
-                  <div
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      color: "#edf2ff",
-                      lineHeight: 1.8,
-                      fontSize: "15px",
-                    }}
-                  >
-                    {message.content}
+                    {message.role === "assistant" &&
+                      (message.category || message.confidence) && (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            flexWrap: "wrap",
+                            marginBottom: "12px",
+                          }}
+                        >
+                          {message.category && (
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                padding: "6px 10px",
+                                borderRadius: "999px",
+                                background: "rgba(126, 162, 255, 0.12)",
+                                border: "1px solid rgba(126, 162, 255, 0.22)",
+                                color: "#dfe7ff",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                              }}
+                            >
+                              Detected category: {message.category.label}
+                            </div>
+                          )}
+
+                          {message.confidence && (
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                padding: "6px 10px",
+                                borderRadius: "999px",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                ...getConfidenceBadgeStyle(
+                                  message.confidence.level
+                                ),
+                              }}
+                            >
+                              Confidence: {message.confidence.level.toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                    <div
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        color: "#edf2ff",
+                        lineHeight: 1.8,
+                        fontSize: "15px",
+                      }}
+                    >
+                      {message.content}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <form onSubmit={handleSubmit}>
@@ -459,42 +583,69 @@ export default function ChatPage() {
                 style={{
                   fontSize: "14px",
                   color: "#b9caff",
-                  marginBottom: "10px",
+                  marginBottom: "12px",
                 }}
               >
-                Quick examples
+                Quick examples by issue type
               </div>
 
               <div
                 style={{
                   display: "flex",
-                  gap: "10px",
-                  flexWrap: "wrap",
+                  flexDirection: "column",
+                  gap: "16px",
                 }}
               >
-                {[
-                  "What punishment can happen if someone steals property?",
-                  "Someone is threatening me online",
-                  "Can police keep a person more than 24 hours?",
-                  "Someone harmed my reputation on social media",
-                  "Somebody did something bad",
-                ].map((example) => (
-                  <button
-                    key={example}
-                    type="button"
-                    onClick={() => applyExample(example)}
+                {EXAMPLE_GROUPS.map((group) => (
+                  <div
+                    key={group.title}
                     style={{
-                      borderRadius: "999px",
-                      padding: "10px 14px",
-                      background: "rgba(126, 162, 255, 0.10)",
-                      border: "1px solid rgba(126, 162, 255, 0.20)",
-                      color: "#dfe7ff",
-                      fontSize: "13px",
-                      cursor: "pointer",
+                      background: "rgba(10, 19, 43, 0.95)",
+                      border: "1px solid rgba(132, 151, 220, 0.14)",
+                      borderRadius: "18px",
+                      padding: "14px",
                     }}
                   >
-                    {example}
-                  </button>
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.6px",
+                        color: "#a9c1ff",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      {group.title}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {group.examples.map((example) => (
+                        <button
+                          key={example}
+                          type="button"
+                          onClick={() => applyExample(example)}
+                          style={{
+                            borderRadius: "999px",
+                            padding: "10px 14px",
+                            background: "rgba(126, 162, 255, 0.10)",
+                            border: "1px solid rgba(126, 162, 255, 0.20)",
+                            color: "#dfe7ff",
+                            fontSize: "13px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {example}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -667,6 +818,140 @@ export default function ChatPage() {
                       : "The current prototype found only a limited or tentative match, so this result should be treated with extra caution."
                     : "Submit a question to see backend confidence scoring for the current prototype match."}
                 </div>
+              </div>
+            </section>
+
+            <section style={{ ...cardStyle, padding: "24px" }}>
+              <div
+                style={{
+                  fontSize: "14px",
+                  color: "#b9caff",
+                  marginBottom: "8px",
+                }}
+              >
+                Matched law cards
+              </div>
+              <div
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  marginBottom: "16px",
+                }}
+              >
+                Top matched provisions
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                {latestResponse?.citations?.length ? (
+                  latestResponse.citations.map((citation, index) => (
+                    <div
+                      key={`law-card-${citation.title}-${index}`}
+                      style={{
+                        background: "rgba(10, 19, 43, 0.95)",
+                        border: "1px solid rgba(132, 151, 220, 0.14)",
+                        borderRadius: "18px",
+                        padding: "16px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "5px 9px",
+                          borderRadius: "999px",
+                          background: "rgba(126, 162, 255, 0.10)",
+                          border: "1px solid rgba(126, 162, 255, 0.18)",
+                          color: "#cfe0ff",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          marginBottom: "10px",
+                        }}
+                      >
+                        Match #{index + 1}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "16px",
+                          fontWeight: 700,
+                          color: "#ffffff",
+                          lineHeight: 1.5,
+                          marginBottom: "8px",
+                        }}
+                      >
+                        {citation.section}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#a9c1ff",
+                          marginBottom: "10px",
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {citation.title}
+                      </div>
+
+                      <div
+                        style={{
+                          color: "#dbe4ff",
+                          lineHeight: 1.7,
+                          fontSize: "14px",
+                          marginBottom: citation.excerpt ? "10px" : 0,
+                        }}
+                      >
+                        {citation.note}
+                      </div>
+
+                      {citation.excerpt && (
+                        <div
+                          style={{
+                            background: "rgba(126, 162, 255, 0.08)",
+                            border: "1px solid rgba(126, 162, 255, 0.14)",
+                            borderRadius: "14px",
+                            padding: "12px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.6px",
+                              color: "#b9caff",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            Quick excerpt
+                          </div>
+                          <div
+                            style={{
+                              color: "#edf2ff",
+                              lineHeight: 1.7,
+                              fontSize: "13px",
+                            }}
+                          >
+                            “{getShortExcerpt(citation.excerpt)}”
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div
+                    style={{
+                      background: "rgba(10, 19, 43, 0.95)",
+                      border: "1px solid rgba(132, 151, 220, 0.14)",
+                      borderRadius: "18px",
+                      padding: "16px",
+                      color: "#c6d3f3",
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    Ask a question to see quick law cards for the top matched provisions.
+                  </div>
+                )}
               </div>
             </section>
 
