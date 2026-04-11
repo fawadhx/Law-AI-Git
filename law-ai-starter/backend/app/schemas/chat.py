@@ -12,6 +12,12 @@ class ChatCategory(BaseModel):
     label: str
 
 
+class ChatConfidence(BaseModel):
+    level: str
+    score: int
+    matched_records: int
+
+
 class ChatQueryRequest(BaseModel):
     question: str
 
@@ -21,3 +27,4 @@ class ChatQueryResponse(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     disclaimer: str
     category: ChatCategory
+    confidence: ChatConfidence

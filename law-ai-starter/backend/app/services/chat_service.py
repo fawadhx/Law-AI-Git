@@ -1,7 +1,7 @@
-from app.schemas.chat import ChatCategory, ChatQueryResponse, Citation
+from app.schemas.chat import ChatCategory, ChatConfidence, ChatQueryResponse, Citation
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_classification_service import detect_question_category
-from app.services.legal_retrieval_service import retrieve_legal_sources
+from app.services.legal_retrieval_service import retrieve_scored_legal_sources
 
 
 LEGAL_DISCLAIMER = (
@@ -23,6 +23,31 @@ def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
         )
 
     return citations
+
+
+def determine_confidence(
+    scored_records: list[tuple[int, LegalSourceRecord]],
+) -> ChatConfidence:
+    if not scored_records:
+        return ChatConfidence(level="low", score=0, matched_records=0)
+
+    top_score = scored_records[0][0]
+    matched_records = len(scored_records)
+    second_score = scored_records[1][0] if len(scored_records) > 1 else 0
+    score_gap = top_score - second_score
+
+    if top_score >= 18 and score_gap >= 3:
+        level = "high"
+    elif top_score >= 10:
+        level = "medium"
+    else:
+        level = "low"
+
+    return ChatConfidence(
+        level=level,
+        score=top_score,
+        matched_records=matched_records,
+    )
 
 
 def build_category_guidance(category_key: str) -> str:
@@ -60,11 +85,30 @@ def build_category_guidance(category_key: str) -> str:
     return guidance_map.get(category_key, guidance_map["general"])
 
 
-def build_no_match_answer(question: str, category: dict[str, str]) -> str:
+def build_confidence_note(confidence: ChatConfidence) -> str:
+    if confidence.level == "high":
+        return (
+            "The current prototype found a comparatively strong match in its internal legal-source records."
+        )
+    if confidence.level == "medium":
+        return (
+            "The current prototype found a reasonable match, but the result should still be read cautiously."
+        )
     return (
-        "No strong legal-source match was found in the current prototype dataset.\n\n"
+        "The current prototype found only a limited or tentative match, so this result should be treated with extra caution."
+    )
+
+
+def build_no_match_answer(
+    question: str,
+    category: dict[str, str],
+    confidence: ChatConfidence,
+) -> str:
+    return (
+        f"No strong legal-source match was found in the current prototype dataset.\n\n"
+        f"Confidence level: {confidence.level.upper()}\n\n"
         "What this means:\n"
-        "- The system could not confidently map your question to the small internal sample of legal records.\n"
+        "- The system could not confidently map your question to the current internal legal records.\n"
         "- This does not mean no law applies. It only means the current prototype dataset is still limited.\n\n"
         "Issue-type guidance:\n"
         f"- {build_category_guidance(category['key'])}\n\n"
@@ -83,21 +127,40 @@ def build_no_match_answer(question: str, category: dict[str, str]) -> str:
 def build_match_answer(
     records: list[LegalSourceRecord],
     category: dict[str, str],
+    confidence: ChatConfidence,
 ) -> str:
     primary = records[0]
+
+    if confidence.level == "high":
+        opening = (
+            f"The strongest current match is {primary.citation_label} under "
+            f"{primary.law_name}, which relates to \"{primary.section_title}.\""
+        )
+    elif confidence.level == "medium":
+        opening = (
+            f"A reasonably relevant current match is {primary.citation_label} under "
+            f"{primary.law_name}, which relates to \"{primary.section_title}.\""
+        )
+    else:
+        opening = (
+            f"A tentative current match is {primary.citation_label} under "
+            f"{primary.law_name}, which relates to \"{primary.section_title}.\""
+        )
 
     lines: list[str] = [
         "Matched legal information",
         "",
-        (
-            f"The strongest current match is {primary.citation_label} under "
-            f"{primary.law_name}, which relates to \"{primary.section_title}.\""
-        ),
+        f"Confidence level: {confidence.level.upper()}",
+        "",
+        opening,
         "",
         f"Plain-language summary: {primary.summary}",
         "",
         "Issue-type guidance:",
         build_category_guidance(category["key"]),
+        "",
+        "Confidence note:",
+        build_confidence_note(confidence),
     ]
 
     if len(records) > 1:
@@ -130,18 +193,22 @@ def build_answer(
     question: str,
     records: list[LegalSourceRecord],
     category: dict[str, str],
+    confidence: ChatConfidence,
 ) -> str:
     if not records:
-        return build_no_match_answer(question, category)
+        return build_no_match_answer(question, category, confidence)
 
-    return build_match_answer(records, category)
+    return build_match_answer(records, category, confidence)
 
 
 def generate_mock_legal_response(question: str) -> ChatQueryResponse:
-    records = retrieve_legal_sources(question, limit=3)
-    detected_category = detect_question_category(question, records)
+    scored_records = retrieve_scored_legal_sources(question, limit=3)
+    records = [record for _, record in scored_records]
 
-    answer = build_answer(question, records, detected_category)
+    detected_category = detect_question_category(question, records)
+    confidence = determine_confidence(scored_records)
+
+    answer = build_answer(question, records, detected_category, confidence)
     citations = build_citations(records)
 
     return ChatQueryResponse(
@@ -152,4 +219,5 @@ def generate_mock_legal_response(question: str) -> ChatQueryResponse:
             key=detected_category["key"],
             label=detected_category["label"],
         ),
+        confidence=confidence,
     )

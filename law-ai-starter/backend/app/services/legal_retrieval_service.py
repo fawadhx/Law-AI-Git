@@ -227,7 +227,9 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     return score
 
 
-def retrieve_legal_sources(query: str, limit: int = 3) -> list[LegalSourceRecord]:
+def retrieve_scored_legal_sources(
+    query: str, limit: int = 3
+) -> list[tuple[int, LegalSourceRecord]]:
     scored_results: list[tuple[int, LegalSourceRecord]] = []
 
     for record in LEGAL_SOURCES:
@@ -244,4 +246,8 @@ def retrieve_legal_sources(query: str, limit: int = 3) -> list[LegalSourceRecord
         reverse=True,
     )
 
-    return [record for _, record in scored_results[:limit]]
+    return scored_results[:limit]
+
+
+def retrieve_legal_sources(query: str, limit: int = 3) -> list[LegalSourceRecord]:
+    return [record for _, record in retrieve_scored_legal_sources(query, limit=limit)]
