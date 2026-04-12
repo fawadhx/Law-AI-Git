@@ -51,13 +51,13 @@ const pageWrap: CSSProperties = {
   background:
     "radial-gradient(circle at top, rgba(45,78,180,0.18), transparent 24%), linear-gradient(180deg, #071226 0%, #09152b 100%)",
   color: "#f4f7ff",
-  padding: "32px 0 72px",
+  padding: "28px 0 52px",
 };
 
 const containerStyle: CSSProperties = {
-  maxWidth: "1280px",
+  maxWidth: "1320px",
   margin: "0 auto",
-  padding: "0 24px",
+  padding: "0 20px",
 };
 
 const cardStyle: CSSProperties = {
@@ -67,16 +67,45 @@ const cardStyle: CSSProperties = {
   boxShadow: "0 12px 34px rgba(0, 0, 0, 0.22)",
 };
 
+const sectionLabelStyle: CSSProperties = {
+  fontSize: "12px",
+  color: "#b9caff",
+  marginBottom: "8px",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.65px",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  fontSize: "20px",
+  fontWeight: 700,
+  marginBottom: "14px",
+  lineHeight: 1.3,
+};
+
+const mutedBodyStyle: CSSProperties = {
+  color: "#dbe4ff",
+  lineHeight: 1.65,
+  fontSize: "14px",
+};
+
+const panelInnerCardStyle: CSSProperties = {
+  background: "rgba(10, 19, 43, 0.95)",
+  border: "1px solid rgba(132, 151, 220, 0.14)",
+  borderRadius: "16px",
+  padding: "14px",
+};
+
 const secondaryButton: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   borderRadius: "14px",
-  padding: "14px 20px",
+  padding: "12px 16px",
   background: "transparent",
   color: "#dfe7ff",
   fontWeight: 700,
-  fontSize: "15px",
+  fontSize: "14px",
   cursor: "pointer",
   textDecoration: "none",
   border: "1px solid rgba(150, 170, 255, 0.26)",
@@ -88,11 +117,11 @@ const primaryButton: CSSProperties = {
   justifyContent: "center",
   border: "none",
   borderRadius: "14px",
-  padding: "14px 20px",
+  padding: "12px 18px",
   background: "#7ea2ff",
   color: "#081227",
   fontWeight: 700,
-  fontSize: "15px",
+  fontSize: "14px",
   cursor: "pointer",
 };
 
@@ -136,7 +165,8 @@ function getAnswerStatusConfig(confidence?: ChatConfidence): {
   if (confidence.level === "high") {
     return {
       label: "Strong match",
-      description: "The current prototype found a comparatively strong legal-source match.",
+      description:
+        "The current prototype found a comparatively strong legal-source match.",
       style: {
         background: "rgba(34, 197, 94, 0.14)",
         border: "1px solid rgba(34, 197, 94, 0.24)",
@@ -148,7 +178,8 @@ function getAnswerStatusConfig(confidence?: ChatConfidence): {
   if (confidence.level === "medium") {
     return {
       label: "Reasonable match",
-      description: "The current prototype found a reasonable match, but the result should still be read cautiously.",
+      description:
+        "The current prototype found a reasonable match, but the result should still be read cautiously.",
       style: {
         background: "rgba(250, 204, 21, 0.12)",
         border: "1px solid rgba(250, 204, 21, 0.22)",
@@ -159,13 +190,30 @@ function getAnswerStatusConfig(confidence?: ChatConfidence): {
 
   return {
     label: "Tentative match",
-    description: "The current prototype found only a limited or tentative match, so this result should be treated with extra caution.",
+    description:
+      "The current prototype found only a limited or tentative match, so this result should be treated with extra caution.",
     style: {
       background: "rgba(248, 113, 113, 0.12)",
       border: "1px solid rgba(248, 113, 113, 0.22)",
       color: "#fee2e2",
     },
   };
+}
+
+function getConfidenceDescription(confidence?: ChatConfidence): string {
+  if (!confidence) {
+    return "Submit a question to see backend confidence scoring for the current prototype match.";
+  }
+
+  if (confidence.level === "high") {
+    return "The current prototype found a comparatively strong internal legal-source match.";
+  }
+
+  if (confidence.level === "medium") {
+    return "The current prototype found a reasonable match, but the result should still be read cautiously.";
+  }
+
+  return "The current prototype found only a limited or tentative match, so this result should be treated with extra caution.";
 }
 
 const EXAMPLE_GROUPS = [
@@ -199,10 +247,7 @@ const EXAMPLE_GROUPS = [
   },
   {
     title: "General / Weak Match",
-    examples: [
-      "I have some legal issue",
-      "Somebody did something bad",
-    ],
+    examples: ["I have some legal issue", "Somebody did something bad"],
   },
 ];
 
@@ -217,9 +262,8 @@ export default function ChatPage() {
         "Ask a legal-information question to receive a prototype response based on the current structured legal-source records.",
     },
   ]);
-  const [latestResponse, setLatestResponse] = useState<ChatQueryResponse | null>(
-    null
-  );
+  const [latestResponse, setLatestResponse] =
+    useState<ChatQueryResponse | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -277,919 +321,700 @@ export default function ChatPage() {
   return (
     <main style={pageWrap}>
       <div style={containerStyle}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "16px",
-            marginBottom: "28px",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                display: "inline-block",
-                padding: "8px 12px",
-                borderRadius: "999px",
-                background: "rgba(126, 162, 255, 0.12)",
-                border: "1px solid rgba(126, 162, 255, 0.22)",
-                color: "#b9caff",
-                fontSize: "13px",
-                fontWeight: 600,
-                marginBottom: "12px",
-              }}
-            >
-              Legal information assistant
-            </div>
-
-            <h1
-              style={{
-                fontSize: "44px",
-                lineHeight: 1.08,
-                letterSpacing: "-1px",
-                margin: "0 0 10px",
-              }}
-            >
-              Legal Chat
-            </h1>
-
-            <p
-              style={{
-                margin: 0,
-                maxWidth: "860px",
-                color: "#c8d6f7",
-                fontSize: "18px",
-                lineHeight: 1.65,
-              }}
-            >
-              Ask a legal-information question and the system will try to match it
-              against the current structured prototype dataset, return supporting
-              citations, classify the issue type, and show match confidence.
-            </p>
-          </div>
-
-          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            <Link href="/" style={secondaryButton}>
-              Back to Homepage
-            </Link>
-            <Link href="/officer-authority" style={secondaryButton}>
-              Officer Authority
-            </Link>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.25fr 0.75fr",
-            gap: "24px",
-            alignItems: "start",
-          }}
-        >
-          <section style={{ ...cardStyle, padding: "24px" }}>
-            <div
-              style={{
-                fontSize: "14px",
-                color: "#b9caff",
-                marginBottom: "8px",
-              }}
-            >
-              Conversation
-            </div>
-            <div
-              style={{
-                fontSize: "24px",
-                fontWeight: 700,
-                marginBottom: "18px",
-              }}
-            >
-              Ask a legal-information question
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "14px",
-                marginBottom: "20px",
-              }}
-            >
-              {messages.map((message, index) => {
-                const statusConfig =
-                  message.role === "assistant"
-                    ? getAnswerStatusConfig(message.confidence)
-                    : null;
-
-                return (
-                  <div
-                    key={`${message.role}-${index}`}
-                    style={{
-                      alignSelf:
-                        message.role === "user" ? "flex-end" : "stretch",
-                      maxWidth: message.role === "user" ? "78%" : "100%",
-                      marginLeft: message.role === "user" ? "auto" : 0,
-                      background:
-                        message.role === "user"
-                          ? "rgba(126, 162, 255, 0.16)"
-                          : "rgba(10, 19, 43, 0.95)",
-                      border:
-                        message.role === "user"
-                          ? "1px solid rgba(126, 162, 255, 0.22)"
-                          : "1px solid rgba(132, 151, 220, 0.14)",
-                      borderRadius: "18px",
-                      padding: "16px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        letterSpacing: "0.5px",
-                        textTransform: "uppercase",
-                        color:
-                          message.role === "user" ? "#cfe0ff" : "#a9c1ff",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      {message.role === "user" ? "You" : "Law AI"}
-                    </div>
-
-                    {statusConfig && (
-                      <div
-                        style={{
-                          borderRadius: "16px",
-                          padding: "12px 14px",
-                          marginBottom: "12px",
-                          ...statusConfig.style,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: 800,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.6px",
-                            marginBottom: "6px",
-                          }}
-                        >
-                          {statusConfig.label}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "14px",
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          {statusConfig.description}
-                        </div>
-                      </div>
-                    )}
-
-                    {message.role === "assistant" &&
-                      (message.category || message.confidence) && (
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            flexWrap: "wrap",
-                            marginBottom: "12px",
-                          }}
-                        >
-                          {message.category && (
-                            <div
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "6px 10px",
-                                borderRadius: "999px",
-                                background: "rgba(126, 162, 255, 0.12)",
-                                border: "1px solid rgba(126, 162, 255, 0.22)",
-                                color: "#dfe7ff",
-                                fontSize: "12px",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Detected category: {message.category.label}
-                            </div>
-                          )}
-
-                          {message.confidence && (
-                            <div
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                padding: "6px 10px",
-                                borderRadius: "999px",
-                                fontSize: "12px",
-                                fontWeight: 700,
-                                ...getConfidenceBadgeStyle(
-                                  message.confidence.level
-                                ),
-                              }}
-                            >
-                              Confidence: {message.confidence.level.toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                    <div
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        color: "#edf2ff",
-                        lineHeight: 1.8,
-                        fontSize: "15px",
-                      }}
-                    >
-                      {message.content}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <form onSubmit={handleSubmit}>
-              <label
-                htmlFor="question"
+        <div className="chat-page-shell">
+          <div className="hero-row">
+            <div>
+              <div
                 style={{
-                  display: "block",
-                  fontSize: "14px",
-                  color: "#b9caff",
-                  marginBottom: "10px",
-                }}
-              >
-                Your question
-              </label>
-
-              <textarea
-                id="question"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Example: Can police detain a person for more than 24 hours?"
-                rows={5}
-                style={{
-                  width: "100%",
-                  resize: "vertical",
-                  borderRadius: "16px",
+                  display: "inline-block",
+                  padding: "7px 11px",
+                  borderRadius: "999px",
+                  background: "rgba(126, 162, 255, 0.12)",
                   border: "1px solid rgba(126, 162, 255, 0.22)",
-                  background: "rgba(8, 17, 38, 0.95)",
-                  color: "#f4f7ff",
-                  padding: "16px",
-                  fontSize: "15px",
-                  lineHeight: 1.7,
-                  outline: "none",
-                  marginBottom: "14px",
-                }}
-              />
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  marginBottom: error ? "12px" : 0,
-                }}
-              >
-                <button
-                  type="submit"
-                  disabled={loading}
-                  style={{
-                    ...primaryButton,
-                    opacity: loading ? 0.7 : 1,
-                  }}
-                >
-                  {loading ? "Thinking..." : "Ask Question"}
-                </button>
-              </div>
-
-              {error && (
-                <div
-                  style={{
-                    marginTop: "12px",
-                    borderRadius: "16px",
-                    padding: "14px 16px",
-                    background: "rgba(65, 18, 28, 0.8)",
-                    border: "1px solid rgba(255, 120, 120, 0.22)",
-                    color: "#ffd7df",
-                    lineHeight: 1.7,
-                  }}
-                >
-                  Failed to fetch response: {error}
-                </div>
-              )}
-            </form>
-
-            <div style={{ marginTop: "20px" }}>
-              <div
-                style={{
-                  fontSize: "14px",
                   color: "#b9caff",
+                  fontSize: "12px",
+                  fontWeight: 700,
                   marginBottom: "12px",
+                  letterSpacing: "0.4px",
                 }}
               >
-                Quick examples by issue type
+                Legal information assistant
               </div>
 
-              <div
+              <h1
                 style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "16px",
+                  fontSize: "clamp(30px, 5vw, 42px)",
+                  lineHeight: 1.05,
+                  letterSpacing: "-1px",
+                  margin: "0 0 10px",
                 }}
               >
-                {EXAMPLE_GROUPS.map((group) => (
-                  <div
-                    key={group.title}
-                    style={{
-                      background: "rgba(10, 19, 43, 0.95)",
-                      border: "1px solid rgba(132, 151, 220, 0.14)",
-                      borderRadius: "18px",
-                      padding: "14px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.6px",
-                        color: "#a9c1ff",
-                        marginBottom: "10px",
-                      }}
-                    >
-                      {group.title}
-                    </div>
+                Legal Chat
+              </h1>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "10px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {group.examples.map((example) => (
-                        <button
-                          key={example}
-                          type="button"
-                          onClick={() => applyExample(example)}
-                          style={{
-                            borderRadius: "999px",
-                            padding: "10px 14px",
-                            background: "rgba(126, 162, 255, 0.10)",
-                            border: "1px solid rgba(126, 162, 255, 0.20)",
-                            color: "#dfe7ff",
-                            fontSize: "13px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          {example}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <p
+                style={{
+                  margin: 0,
+                  maxWidth: "780px",
+                  color: "#c8d6f7",
+                  fontSize: "16px",
+                  lineHeight: 1.7,
+                }}
+              >
+                Ask a legal-information question and the system will try to match
+                it against the current structured prototype dataset, return
+                supporting citations, classify the issue type, and show match
+                confidence.
+              </p>
             </div>
-          </section>
 
-          <aside style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            <section style={{ ...cardStyle, padding: "24px" }}>
-              <div
-                style={{
-                  fontSize: "14px",
-                  color: "#b9caff",
-                  marginBottom: "8px",
-                }}
-              >
-                Detected issue type
-              </div>
-              <div
-                style={{
-                  fontSize: "22px",
-                  fontWeight: 700,
-                  marginBottom: "12px",
-                }}
-              >
-                {latestResponse?.category?.label || "No category yet"}
-              </div>
-              <div
-                style={{
-                  color: "#dbe4ff",
-                  lineHeight: 1.7,
-                  fontSize: "15px",
-                }}
-              >
-                {latestResponse
-                  ? `Structured category key: ${latestResponse.category.key}`
-                  : "Submit a question to see the detected category returned by the backend."}
-              </div>
-            </section>
+            <div className="hero-actions">
+              <Link href="/" style={secondaryButton}>
+                Back to Homepage
+              </Link>
+              <Link href="/officer-authority" style={secondaryButton}>
+                Officer Authority
+              </Link>
+            </div>
+          </div>
 
-            <section style={{ ...cardStyle, padding: "24px" }}>
-              <div
-                style={{
-                  fontSize: "14px",
-                  color: "#b9caff",
-                  marginBottom: "8px",
-                }}
-              >
-                Match confidence
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                  marginBottom: "14px",
-                  flexWrap: "wrap",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "22px",
-                    fontWeight: 700,
-                  }}
-                >
-                  {latestResponse?.confidence?.level
-                    ? latestResponse.confidence.level.toUpperCase()
-                    : "No confidence yet"}
-                </div>
-
-                {latestResponse?.confidence && (
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      padding: "6px 10px",
-                      borderRadius: "999px",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      ...getConfidenceBadgeStyle(
-                        latestResponse.confidence.level
-                      ),
-                    }}
-                  >
-                    Active match
+          <div className="content-grid">
+            <section style={{ ...cardStyle, padding: "20px" }}>
+              <div className="conversation-header">
+                <div>
+                  <div style={sectionLabelStyle}>Conversation</div>
+                  <div style={{ ...sectionTitleStyle, marginBottom: "6px" }}>
+                    Ask a legal-information question
                   </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                }}
-              >
-                <div
-                  style={{
-                    background: "rgba(10, 19, 43, 0.95)",
-                    border: "1px solid rgba(132, 151, 220, 0.14)",
-                    borderRadius: "18px",
-                    padding: "16px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.6px",
-                      color: "#a9c1ff",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    Top match score
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "20px",
-                      fontWeight: 700,
-                      color: "#ffffff",
-                    }}
-                  >
-                    {latestResponse?.confidence?.score ?? "--"}
+                  <div style={mutedBodyStyle}>
+                    The left panel stays focused on the conversation, while the
+                    right side shows the current matched result snapshot.
                   </div>
                 </div>
-
-                <div
-                  style={{
-                    background: "rgba(10, 19, 43, 0.95)",
-                    border: "1px solid rgba(132, 151, 220, 0.14)",
-                    borderRadius: "18px",
-                    padding: "16px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.6px",
-                      color: "#a9c1ff",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    Matched records
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "20px",
-                      fontWeight: 700,
-                      color: "#ffffff",
-                    }}
-                  >
-                    {latestResponse?.confidence?.matched_records ?? "--"}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    color: "#dbe4ff",
-                    lineHeight: 1.7,
-                    fontSize: "15px",
-                  }}
-                >
-                  {latestResponse?.confidence
-                    ? latestResponse.confidence.level === "high"
-                      ? "The current prototype found a comparatively strong internal legal-source match."
-                      : latestResponse.confidence.level === "medium"
-                      ? "The current prototype found a reasonable match, but the result should still be read cautiously."
-                      : "The current prototype found only a limited or tentative match, so this result should be treated with extra caution."
-                    : "Submit a question to see backend confidence scoring for the current prototype match."}
-                </div>
-              </div>
-            </section>
-
-            <section style={{ ...cardStyle, padding: "24px" }}>
-              <div
-                style={{
-                  fontSize: "14px",
-                  color: "#b9caff",
-                  marginBottom: "8px",
-                }}
-              >
-                
-                <section style={{ ...cardStyle, padding: "24px" }}>
-                  <div
-                    style={{
-                      fontSize: "14px",
-                      color: "#b9caff",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    Why this matched
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "22px",
-                      fontWeight: 700,
-                      marginBottom: "16px",
-                    }}
-                  >
-                    Match explanation
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                    {latestResponse?.why_matched?.length ? (
-                      latestResponse.why_matched.map((item, index) => (
-                        <div
-                          key={`${item.title}-${index}`}
-                          style={{
-                            background: "rgba(10, 19, 43, 0.95)",
-                            border: "1px solid rgba(132, 151, 220, 0.14)",
-                            borderRadius: "18px",
-                            padding: "16px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: "15px",
-                              fontWeight: 700,
-                              color: "#ffffff",
-                              lineHeight: 1.6,
-                              marginBottom: "10px",
-                            }}
-                          >
-                            {item.title}
-                          </div>
-
-                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            {item.points.map((point, pointIndex) => (
-                              <div
-                                key={`${item.title}-${pointIndex}`}
-                                style={{
-                                  color: "#dbe4ff",
-                                  lineHeight: 1.7,
-                                  fontSize: "14px",
-                                }}
-                              >
-                                • {point}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div
-                        style={{
-                          background: "rgba(10, 19, 43, 0.95)",
-                          border: "1px solid rgba(132, 151, 220, 0.14)",
-                          borderRadius: "18px",
-                          padding: "16px",
-                          color: "#c6d3f3",
-                          lineHeight: 1.7,
-                        }}
-                      >
-                        Ask a question to see which keywords, tags, or legal signals likely caused the current match.
-                      </div>
-                    )}
-                  </div>
-                </section>
-                
-                Matched law cards
-              </div>
-              <div
-                style={{
-                  fontSize: "22px",
-                  fontWeight: 700,
-                  marginBottom: "16px",
-                }}
-              >
-                Top matched provisions
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                {latestResponse?.citations?.length ? (
-                  latestResponse.citations.map((citation, index) => (
+              <div className="messages-pane">
+                {messages.map((message, index) => {
+                  const statusConfig =
+                    message.role === "assistant"
+                      ? getAnswerStatusConfig(message.confidence)
+                      : null;
+
+                  return (
                     <div
-                      key={`law-card-${citation.title}-${index}`}
+                      key={`${message.role}-${index}`}
                       style={{
-                        background: "rgba(10, 19, 43, 0.95)",
-                        border: "1px solid rgba(132, 151, 220, 0.14)",
+                        alignSelf: message.role === "user" ? "flex-end" : "stretch",
+                        maxWidth: message.role === "user" ? "76%" : "100%",
+                        marginLeft: message.role === "user" ? "auto" : 0,
+                        background:
+                          message.role === "user"
+                            ? "rgba(126, 162, 255, 0.16)"
+                            : "rgba(10, 19, 43, 0.95)",
+                        border:
+                          message.role === "user"
+                            ? "1px solid rgba(126, 162, 255, 0.22)"
+                            : "1px solid rgba(132, 151, 220, 0.14)",
                         borderRadius: "18px",
-                        padding: "16px",
+                        padding: "14px",
+                        overflowWrap: "anywhere",
                       }}
                     >
                       <div
                         style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          padding: "5px 9px",
-                          borderRadius: "999px",
-                          background: "rgba(126, 162, 255, 0.10)",
-                          border: "1px solid rgba(126, 162, 255, 0.18)",
-                          color: "#cfe0ff",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          marginBottom: "10px",
-                        }}
-                      >
-                        Match #{index + 1}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: "16px",
-                          fontWeight: 700,
-                          color: "#ffffff",
-                          lineHeight: 1.5,
-                          marginBottom: "8px",
-                        }}
-                      >
-                        {citation.section}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: "13px",
-                          color: "#a9c1ff",
-                          marginBottom: "10px",
-                          lineHeight: 1.6,
-                        }}
-                      >
-                        {citation.title}
-                      </div>
-
-                      <div
-                        style={{
-                          color: "#dbe4ff",
-                          lineHeight: 1.7,
-                          fontSize: "14px",
-                          marginBottom: citation.excerpt ? "10px" : 0,
-                        }}
-                      >
-                        {citation.note}
-                      </div>
-
-                      {citation.excerpt && (
-                        <div
-                          style={{
-                            background: "rgba(126, 162, 255, 0.08)",
-                            border: "1px solid rgba(126, 162, 255, 0.14)",
-                            borderRadius: "14px",
-                            padding: "12px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.6px",
-                              color: "#b9caff",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            Quick excerpt
-                          </div>
-                          <div
-                            style={{
-                              color: "#edf2ff",
-                              lineHeight: 1.7,
-                              fontSize: "13px",
-                            }}
-                          >
-                            “{getShortExcerpt(citation.excerpt)}”
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div
-                    style={{
-                      background: "rgba(10, 19, 43, 0.95)",
-                      border: "1px solid rgba(132, 151, 220, 0.14)",
-                      borderRadius: "18px",
-                      padding: "16px",
-                      color: "#c6d3f3",
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    Ask a question to see quick law cards for the top matched provisions.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section style={{ ...cardStyle, padding: "24px" }}>
-              <div
-                style={{
-                  fontSize: "14px",
-                  color: "#b9caff",
-                  marginBottom: "8px",
-                }}
-              >
-                Citation panel
-              </div>
-              <div
-                style={{
-                  fontSize: "22px",
-                  fontWeight: 700,
-                  marginBottom: "16px",
-                }}
-              >
-                Supporting records
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                {latestResponse?.citations?.length ? (
-                  latestResponse.citations.map((citation, index) => (
-                    <div
-                      key={`${citation.title}-${index}`}
-                      style={{
-                        background: "rgba(10, 19, 43, 0.95)",
-                        border: "1px solid rgba(132, 151, 220, 0.14)",
-                        borderRadius: "18px",
-                        padding: "16px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: "16px",
-                          fontWeight: 700,
-                          color: "#ffffff",
-                          marginBottom: "8px",
-                        }}
-                      >
-                        {citation.title}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "13px",
-                          fontWeight: 700,
+                          fontSize: "12px",
+                          fontWeight: 800,
+                          letterSpacing: "0.5px",
                           textTransform: "uppercase",
-                          letterSpacing: "0.6px",
-                          color: "#a9c1ff",
+                          color:
+                            message.role === "user" ? "#cfe0ff" : "#a9c1ff",
                           marginBottom: "8px",
                         }}
                       >
-                        {citation.section}
-                      </div>
-                      <div
-                        style={{
-                          color: "#c6d3f3",
-                          lineHeight: 1.7,
-                          fontSize: "14px",
-                          marginBottom: citation.excerpt ? "12px" : 0,
-                        }}
-                      >
-                        {citation.note}
+                        {message.role === "user" ? "You" : "Law AI"}
                       </div>
 
-                      {citation.excerpt && (
+                      {statusConfig && (
                         <div
                           style={{
-                            background: "rgba(126, 162, 255, 0.08)",
-                            border: "1px solid rgba(126, 162, 255, 0.16)",
                             borderRadius: "14px",
-                            padding: "12px",
+                            padding: "11px 13px",
+                            marginBottom: "12px",
+                            ...statusConfig.style,
                           }}
                         >
                           <div
                             style={{
                               fontSize: "12px",
-                              fontWeight: 700,
+                              fontWeight: 800,
                               textTransform: "uppercase",
                               letterSpacing: "0.6px",
-                              color: "#b9caff",
-                              marginBottom: "8px",
+                              marginBottom: "6px",
                             }}
                           >
-                            Source excerpt
+                            {statusConfig.label}
                           </div>
                           <div
                             style={{
-                              color: "#edf2ff",
-                              lineHeight: 1.7,
-                              fontSize: "14px",
-                              fontStyle: "italic",
+                              fontSize: "13px",
+                              lineHeight: 1.6,
                             }}
                           >
-                            “{citation.excerpt}”
+                            {statusConfig.description}
                           </div>
                         </div>
                       )}
+
+                      {message.role === "assistant" &&
+                        (message.category || message.confidence) && (
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "8px",
+                              flexWrap: "wrap",
+                              marginBottom: "12px",
+                            }}
+                          >
+                            {message.category && (
+                              <div
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "8px",
+                                  padding: "6px 10px",
+                                  borderRadius: "999px",
+                                  background: "rgba(126, 162, 255, 0.12)",
+                                  border:
+                                    "1px solid rgba(126, 162, 255, 0.22)",
+                                  color: "#dfe7ff",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Detected category: {message.category.label}
+                              </div>
+                            )}
+
+                            {message.confidence && (
+                              <div
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "8px",
+                                  padding: "6px 10px",
+                                  borderRadius: "999px",
+                                  fontSize: "12px",
+                                  fontWeight: 700,
+                                  ...getConfidenceBadgeStyle(
+                                    message.confidence.level
+                                  ),
+                                }}
+                              >
+                                Confidence: {message.confidence.level.toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                      <div
+                        style={{
+                          whiteSpace: "pre-wrap",
+                          color: "#edf2ff",
+                          lineHeight: 1.75,
+                          fontSize: "14px",
+                        }}
+                      >
+                        {message.content}
+                      </div>
                     </div>
-                  ))
-                ) : (
-                  <div
+                  );
+                })}
+              </div>
+
+              <form onSubmit={handleSubmit} className="composer-card">
+                <label
+                  htmlFor="question"
+                  style={{
+                    display: "block",
+                    fontSize: "13px",
+                    color: "#b9caff",
+                    marginBottom: "10px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Your question
+                </label>
+
+                <textarea
+                  id="question"
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder="Example: Can police detain a person for more than 24 hours?"
+                  rows={4}
+                  style={{
+                    width: "100%",
+                    resize: "vertical",
+                    borderRadius: "16px",
+                    border: "1px solid rgba(126, 162, 255, 0.22)",
+                    background: "rgba(8, 17, 38, 0.95)",
+                    color: "#f4f7ff",
+                    padding: "14px",
+                    fontSize: "14px",
+                    lineHeight: 1.7,
+                    outline: "none",
+                    minHeight: "122px",
+                    marginBottom: "12px",
+                  }}
+                />
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    marginBottom: error ? "12px" : 0,
+                  }}
+                >
+                  <button
+                    type="submit"
+                    disabled={loading}
                     style={{
-                      background: "rgba(10, 19, 43, 0.95)",
-                      border: "1px solid rgba(132, 151, 220, 0.14)",
-                      borderRadius: "18px",
-                      padding: "16px",
-                      color: "#c6d3f3",
-                      lineHeight: 1.7,
+                      ...primaryButton,
+                      opacity: loading ? 0.7 : 1,
                     }}
                   >
-                    No citations yet. Ask a question to view matched legal-source
-                    records.
+                    {loading ? "Thinking..." : "Ask Question"}
+                  </button>
+                </div>
+
+                {error && (
+                  <div
+                    style={{
+                      marginTop: "12px",
+                      borderRadius: "14px",
+                      padding: "13px 15px",
+                      background: "rgba(65, 18, 28, 0.8)",
+                      border: "1px solid rgba(255, 120, 120, 0.22)",
+                      color: "#ffd7df",
+                      lineHeight: 1.7,
+                      fontSize: "14px",
+                    }}
+                  >
+                    Failed to fetch response: {error}
                   </div>
                 )}
+              </form>
+
+              <div style={{ marginTop: "18px" }}>
+                <div style={{ ...sectionLabelStyle, marginBottom: "10px" }}>
+                  Quick examples by issue type
+                </div>
+
+                <div className="examples-grid">
+                  {EXAMPLE_GROUPS.map((group) => (
+                    <div key={group.title} style={panelInnerCardStyle}>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.6px",
+                          color: "#a9c1ff",
+                          marginBottom: "10px",
+                        }}
+                      >
+                        {group.title}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {group.examples.map((example) => (
+                          <button
+                            key={example}
+                            type="button"
+                            onClick={() => applyExample(example)}
+                            style={{
+                              borderRadius: "999px",
+                              padding: "9px 12px",
+                              background: "rgba(126, 162, 255, 0.10)",
+                              border: "1px solid rgba(126, 162, 255, 0.20)",
+                              color: "#dfe7ff",
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            {example}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
 
-            <section style={{ ...cardStyle, padding: "24px" }}>
-              <div
-                style={{
-                  fontSize: "14px",
-                  color: "#b9caff",
-                  marginBottom: "8px",
-                }}
-              >
-                Legal boundary
-              </div>
-              <div
-                style={{
-                  fontSize: "22px",
-                  fontWeight: 700,
-                  marginBottom: "12px",
-                }}
-              >
-                Prototype disclaimer
-              </div>
-              <div
-                style={{
-                  color: "#dbe4ff",
-                  lineHeight: 1.7,
-                  fontSize: "15px",
-                }}
-              >
-                {latestResponse?.disclaimer ||
-                  "This system is for legal information and public awareness only. It must not be treated as a lawyer or a substitute for legal advice."}
-              </div>
-            </section>
-          </aside>
+            <aside className="sidebar-stack">
+              <section style={{ ...cardStyle, padding: "20px" }}>
+                <div style={sectionLabelStyle}>Current result snapshot</div>
+                <div style={sectionTitleStyle}>Detected category and confidence</div>
+
+                <div className="snapshot-head">
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "22px",
+                        fontWeight: 800,
+                        lineHeight: 1.25,
+                        marginBottom: "6px",
+                      }}
+                    >
+                      {latestResponse?.category?.label || "No category yet"}
+                    </div>
+                    <div style={mutedBodyStyle}>
+                      {latestResponse
+                        ? `Structured category key: ${latestResponse.category.key}`
+                        : "Submit a question to see the detected category returned by the backend."}
+                    </div>
+                  </div>
+
+                  {latestResponse?.confidence && (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "7px 11px",
+                        borderRadius: "999px",
+                        fontSize: "12px",
+                        fontWeight: 800,
+                        whiteSpace: "nowrap",
+                        ...getConfidenceBadgeStyle(latestResponse.confidence.level),
+                      }}
+                    >
+                      {latestResponse.confidence.level.toUpperCase()} confidence
+                    </div>
+                  )}
+                </div>
+
+                <div className="stats-grid">
+                  <div style={panelInnerCardStyle}>
+                    <div style={sectionLabelStyle}>Top match score</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800 }}>
+                      {latestResponse?.confidence?.score ?? "--"}
+                    </div>
+                  </div>
+
+                  <div style={panelInnerCardStyle}>
+                    <div style={sectionLabelStyle}>Matched records</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800 }}>
+                      {latestResponse?.confidence?.matched_records ?? "--"}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ ...mutedBodyStyle, marginTop: "14px" }}>
+                  {getConfidenceDescription(latestResponse?.confidence)}
+                </div>
+
+                <div style={{ ...panelInnerCardStyle, marginTop: "14px" }}>
+                  <div style={sectionLabelStyle}>Legal boundary</div>
+                  <div style={mutedBodyStyle}>
+                    {latestResponse?.disclaimer ||
+                      "This system is for legal information and public awareness only. It must not be treated as a lawyer or a substitute for legal advice."}
+                  </div>
+                </div>
+              </section>
+
+              <section style={{ ...cardStyle, padding: "20px" }}>
+                <div style={sectionLabelStyle}>Why this matched</div>
+                <div style={sectionTitleStyle}>Match explanation</div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {latestResponse?.why_matched?.length ? (
+                    latestResponse.why_matched.map((item, index) => (
+                      <div
+                        key={`${item.title}-${index}`}
+                        style={panelInnerCardStyle}
+                      >
+                        <div
+                          style={{
+                            fontSize: "15px",
+                            fontWeight: 700,
+                            color: "#ffffff",
+                            lineHeight: 1.5,
+                            marginBottom: "10px",
+                          }}
+                        >
+                          {item.title}
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "7px",
+                          }}
+                        >
+                          {item.points.map((point, pointIndex) => (
+                            <div
+                              key={`${item.title}-${pointIndex}`}
+                              style={{
+                                color: "#dbe4ff",
+                                lineHeight: 1.65,
+                                fontSize: "14px",
+                              }}
+                            >
+                              • {point}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ ...panelInnerCardStyle, color: "#c6d3f3", lineHeight: 1.7 }}>
+                      Ask a question to see which keywords, tags, or legal signals
+                      likely caused the current match.
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section style={{ ...cardStyle, padding: "20px" }}>
+                <div style={sectionLabelStyle}>Matched legal records</div>
+                <div style={sectionTitleStyle}>Top matched provisions</div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {latestResponse?.citations?.length ? (
+                    latestResponse.citations.map((citation, index) => (
+                      <div
+                        key={`matched-record-${citation.title}-${index}`}
+                        style={panelInnerCardStyle}
+                      >
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            padding: "5px 9px",
+                            borderRadius: "999px",
+                            background: "rgba(126, 162, 255, 0.10)",
+                            border: "1px solid rgba(126, 162, 255, 0.18)",
+                            color: "#cfe0ff",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            marginBottom: "10px",
+                          }}
+                        >
+                          Match #{index + 1}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "15px",
+                            fontWeight: 700,
+                            color: "#ffffff",
+                            lineHeight: 1.5,
+                            marginBottom: "6px",
+                          }}
+                        >
+                          {citation.section}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            color: "#a9c1ff",
+                            marginBottom: "10px",
+                            lineHeight: 1.55,
+                          }}
+                        >
+                          {citation.title}
+                        </div>
+
+                        <div
+                          style={{
+                            color: "#dbe4ff",
+                            lineHeight: 1.65,
+                            fontSize: "14px",
+                            marginBottom: citation.excerpt ? "10px" : 0,
+                          }}
+                        >
+                          {citation.note}
+                        </div>
+
+                        {citation.excerpt && (
+                          <div
+                            style={{
+                              background: "rgba(126, 162, 255, 0.08)",
+                              border: "1px solid rgba(126, 162, 255, 0.14)",
+                              borderRadius: "14px",
+                              padding: "11px 12px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.6px",
+                                color: "#b9caff",
+                                marginBottom: "8px",
+                              }}
+                            >
+                              Source excerpt
+                            </div>
+                            <div
+                              style={{
+                                color: "#edf2ff",
+                                lineHeight: 1.65,
+                                fontSize: "13px",
+                                fontStyle: "italic",
+                              }}
+                            >
+                              “{getShortExcerpt(citation.excerpt, 180)}”
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ ...panelInnerCardStyle, color: "#c6d3f3", lineHeight: 1.7 }}>
+                      Ask a question to see the top matched legal provisions and
+                      their source excerpts.
+                    </div>
+                  )}
+                </div>
+              </section>
+            </aside>
+          </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .chat-page-shell {
+          display: flex;
+          flex-direction: column;
+          gap: 22px;
+        }
+
+        .hero-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 18px;
+          flex-wrap: wrap;
+        }
+
+        .hero-actions {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .content-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+          gap: 20px;
+          align-items: start;
+        }
+
+        .conversation-header {
+          margin-bottom: 16px;
+        }
+
+        .messages-pane {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-bottom: 16px;
+          max-height: 700px;
+          overflow-y: auto;
+          padding-right: 4px;
+        }
+
+        .composer-card {
+          background: rgba(10, 19, 43, 0.78);
+          border: 1px solid rgba(132, 151, 220, 0.14);
+          border-radius: 18px;
+          padding: 14px;
+        }
+
+        .examples-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .sidebar-stack {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          position: sticky;
+          top: 18px;
+        }
+
+        .snapshot-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
+        }
+
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .messages-pane::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .messages-pane::-webkit-scrollbar-thumb {
+          background: rgba(126, 162, 255, 0.22);
+          border-radius: 999px;
+        }
+
+        @media (max-width: 1100px) {
+          .content-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .sidebar-stack {
+            position: static;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .examples-grid,
+          .stats-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .messages-pane {
+            max-height: none;
+            overflow: visible;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .hero-actions {
+            width: 100%;
+          }
+
+          .hero-actions :global(a) {
+            flex: 1 1 100%;
+          }
+        }
+      `}</style>
     </main>
   );
 }
