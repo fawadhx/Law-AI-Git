@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 
 type Citation = {
@@ -46,12 +46,15 @@ type Message = {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
+const INITIAL_ASSISTANT_MESSAGE =
+  "Ask a legal-information question to receive a prototype response based on the current structured legal-source records.";
+
 const pageWrap: CSSProperties = {
   minHeight: "100vh",
   background:
     "radial-gradient(circle at top, rgba(45,78,180,0.18), transparent 24%), linear-gradient(180deg, #071226 0%, #09152b 100%)",
   color: "#f4f7ff",
-  padding: "24px 0 44px",
+  padding: "22px 0 42px",
 };
 
 const containerStyle: CSSProperties = {
@@ -357,6 +360,94 @@ function ExampleGroupCard({
   );
 }
 
+function EmptyConversationState({ onApply }: { onApply: (example: string) => void }) {
+  const starterExamples = EXAMPLE_GROUPS.slice(0, 3).flatMap((group) => group.examples).slice(0, 4);
+
+  return (
+    <div
+      style={{
+        ...panelInnerCardStyle,
+        padding: "18px",
+        borderRadius: "18px",
+      }}
+    >
+      <div style={{ ...sectionLabelStyle, marginBottom: "10px" }}>Ready to ask</div>
+      <div style={{ fontSize: "18px", fontWeight: 800, lineHeight: 1.3, marginBottom: "8px" }}>
+        Start with a focused legal-information question
+      </div>
+      <div style={{ ...mutedBodyStyle, marginBottom: "14px" }}>
+        Better questions usually include the act, issue, or event involved, such as theft,
+        online threats, arrest without warrant, or detention time.
+      </div>
+
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        {starterExamples.map((example) => (
+          <button
+            key={example}
+            type="button"
+            onClick={() => onApply(example)}
+            style={{
+              borderRadius: "999px",
+              padding: "8px 11px",
+              background: "rgba(126, 162, 255, 0.10)",
+              border: "1px solid rgba(126, 162, 255, 0.20)",
+              color: "#dfe7ff",
+              fontSize: "12px",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            {example}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LoadingBubble() {
+  return (
+    <div
+      style={{
+        alignSelf: "stretch",
+        maxWidth: "100%",
+        background: "rgba(10, 19, 43, 0.95)",
+        border: "1px solid rgba(132, 151, 220, 0.14)",
+        borderRadius: "18px",
+        padding: "13px 14px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "11px",
+          fontWeight: 800,
+          letterSpacing: "0.6px",
+          textTransform: "uppercase",
+          color: "#a9c1ff",
+          marginBottom: "9px",
+        }}
+      >
+        Law AI
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          color: "#dbe4ff",
+          fontSize: "14px",
+        }}
+      >
+        <span>Matching structured legal records</span>
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+        <span className="typing-dot" />
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const statusConfig =
     message.role === "assistant" ? getAnswerStatusConfig(message.confidence) : null;
@@ -449,7 +540,9 @@ function MessageBubble({ message }: { message: Message }) {
           >
             {statusConfig.label}
           </div>
-          <div style={{ fontSize: "12px", lineHeight: 1.6, flex: 1 }}>{statusConfig.description}</div>
+          <div style={{ fontSize: "12px", lineHeight: 1.6, flex: 1 }}>
+            {statusConfig.description}
+          </div>
         </div>
       )}
 
@@ -474,17 +567,28 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content:
-        "Ask a legal-information question to receive a prototype response based on the current structured legal-source records.",
+      content: INITIAL_ASSISTANT_MESSAGE,
     },
   ]);
   const [latestResponse, setLatestResponse] = useState<ChatQueryResponse | null>(null);
+
+  const messagesPaneRef = useRef<HTMLDivElement | null>(null);
 
   const messageCount = messages.length;
   const assistantCount = useMemo(
     () => messages.filter((message) => message.role === "assistant").length,
     [messages]
   );
+  const hasAskedQuestion = useMemo(
+    () => messages.some((message) => message.role === "user"),
+    [messages]
+  );
+
+  useEffect(() => {
+    const pane = messagesPaneRef.current;
+    if (!pane) return;
+    pane.scrollTo({ top: pane.scrollHeight, behavior: "smooth" });
+  }, [messages, loading]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -535,27 +639,54 @@ export default function ChatPage() {
     setQuestion(example);
   }
 
+  function clearConversation() {
+    setMessages([
+      {
+        role: "assistant",
+        content: INITIAL_ASSISTANT_MESSAGE,
+      },
+    ]);
+    setLatestResponse(null);
+    setError("");
+    setQuestion("");
+  }
+
+  const questionLength = question.trim().length;
+
   return (
     <main style={pageWrap}>
       <div style={containerStyle}>
         <div className="chat-page-shell">
           <div className="hero-row">
             <div>
-              <div
-                style={{
-                  display: "inline-block",
-                  padding: "7px 11px",
-                  borderRadius: "999px",
-                  background: "rgba(126, 162, 255, 0.12)",
-                  border: "1px solid rgba(126, 162, 255, 0.22)",
-                  color: "#b9caff",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  marginBottom: "12px",
-                  letterSpacing: "0.4px",
-                }}
-              >
-                Legal information assistant
+              <div className="hero-pills">
+                <SmallPill
+                  style={{
+                    background: "rgba(126, 162, 255, 0.12)",
+                    border: "1px solid rgba(126, 162, 255, 0.22)",
+                    color: "#b9caff",
+                  }}
+                >
+                  Legal information assistant
+                </SmallPill>
+                <SmallPill
+                  style={{
+                    background: "rgba(126, 162, 255, 0.08)",
+                    border: "1px solid rgba(126, 162, 255, 0.16)",
+                    color: "#dfe7ff",
+                  }}
+                >
+                  Prototype dataset
+                </SmallPill>
+                <SmallPill
+                  style={{
+                    background: "rgba(248, 113, 113, 0.10)",
+                    border: "1px solid rgba(248, 113, 113, 0.16)",
+                    color: "#ffd3d3",
+                  }}
+                >
+                  Not legal advice
+                </SmallPill>
               </div>
 
               <h1
@@ -608,26 +739,17 @@ export default function ChatPage() {
                   </div>
                 </div>
 
-                <div className="conversation-stats">
-                  <SmallPill
-                    style={{
-                      background: "rgba(126, 162, 255, 0.10)",
-                      border: "1px solid rgba(126, 162, 255, 0.20)",
-                      color: "#dfe7ff",
-                    }}
-                  >
-                    Messages: {messageCount}
-                  </SmallPill>
-                  <SmallPill
-                    style={{
-                      background: "rgba(126, 162, 255, 0.08)",
-                      border: "1px solid rgba(126, 162, 255, 0.16)",
-                      color: "#cfe0ff",
-                    }}
-                  >
-                    Assistant replies: {assistantCount}
-                  </SmallPill>
-                  {latestResponse?.category && (
+                <div className="conversation-tools">
+                  <div className="conversation-stats">
+                    <SmallPill
+                      style={{
+                        background: "rgba(126, 162, 255, 0.10)",
+                        border: "1px solid rgba(126, 162, 255, 0.20)",
+                        color: "#dfe7ff",
+                      }}
+                    >
+                      Messages: {messageCount}
+                    </SmallPill>
                     <SmallPill
                       style={{
                         background: "rgba(126, 162, 255, 0.08)",
@@ -635,16 +757,37 @@ export default function ChatPage() {
                         color: "#cfe0ff",
                       }}
                     >
-                      Current issue: {latestResponse.category.label}
+                      Assistant replies: {assistantCount}
                     </SmallPill>
+                    {latestResponse?.category && (
+                      <SmallPill
+                        style={{
+                          background: "rgba(126, 162, 255, 0.08)",
+                          border: "1px solid rgba(126, 162, 255, 0.16)",
+                          color: "#cfe0ff",
+                        }}
+                      >
+                        Current issue: {latestResponse.category.label}
+                      </SmallPill>
+                    )}
+                  </div>
+
+                  {hasAskedQuestion && (
+                    <button type="button" onClick={clearConversation} style={secondaryButton}>
+                      Clear chat
+                    </button>
                   )}
                 </div>
               </div>
 
-              <div className="messages-pane">
+              <div ref={messagesPaneRef} className="messages-pane">
+                {!hasAskedQuestion && <EmptyConversationState onApply={applyExample} />}
+
                 {messages.map((message, index) => (
                   <MessageBubble key={`${message.role}-${index}`} message={message} />
                 ))}
+
+                {loading && <LoadingBubble />}
               </div>
 
               <form onSubmit={handleSubmit} className="composer-card">
@@ -689,19 +832,25 @@ export default function ChatPage() {
                 />
 
                 <div className="composer-footer">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                      ...primaryButton,
-                      opacity: loading ? 0.7 : 1,
-                    }}
-                  >
-                    {loading ? "Thinking..." : "Ask Question"}
-                  </button>
+                  <div className="composer-actions-left">
+                    <button
+                      type="submit"
+                      disabled={loading || !question.trim()}
+                      style={{
+                        ...primaryButton,
+                        opacity: loading || !question.trim() ? 0.7 : 1,
+                      }}
+                    >
+                      {loading ? "Thinking..." : "Ask Question"}
+                    </button>
+
+                    <div style={{ fontSize: "12px", color: "#9fb4e8" }}>
+                      Legal information only — not legal advice.
+                    </div>
+                  </div>
 
                   <div style={{ fontSize: "12px", color: "#9fb4e8" }}>
-                    Legal information only — not legal advice.
+                    {questionLength > 0 ? `${questionLength} characters` : "Question box ready"}
                   </div>
                 </div>
 
@@ -786,6 +935,23 @@ export default function ChatPage() {
                 <div style={{ ...mutedBodyStyle, marginTop: "13px" }}>
                   {getConfidenceDescription(latestResponse?.confidence)}
                 </div>
+
+                {latestResponse && (
+                  <div className="mini-summary-row">
+                    <div style={panelInnerCardStyle}>
+                      <div style={sectionLabelStyle}>Citations shown</div>
+                      <div style={{ fontSize: "18px", fontWeight: 800 }}>
+                        {latestResponse.citations.length}
+                      </div>
+                    </div>
+                    <div style={panelInnerCardStyle}>
+                      <div style={sectionLabelStyle}>Why-matched blocks</div>
+                      <div style={{ fontSize: "18px", fontWeight: 800 }}>
+                        {latestResponse.why_matched.length}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ ...panelInnerCardStyle, marginTop: "13px" }}>
                   <div style={sectionLabelStyle}>Legal boundary</div>
@@ -946,6 +1112,13 @@ export default function ChatPage() {
           flex-wrap: wrap;
         }
 
+        .hero-pills {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+
         .hero-actions {
           display: flex;
           gap: 12px;
@@ -961,6 +1134,17 @@ export default function ChatPage() {
 
         .conversation-header {
           margin-bottom: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .conversation-tools {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
         }
 
         .conversation-stats {
@@ -977,6 +1161,7 @@ export default function ChatPage() {
           max-height: 660px;
           overflow-y: auto;
           padding-right: 4px;
+          scroll-behavior: smooth;
         }
 
         .composer-card {
@@ -999,8 +1184,11 @@ export default function ChatPage() {
           margin-bottom: 10px;
         }
 
-        .composer-footer {
-          margin-bottom: 0;
+        .composer-actions-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
         }
 
         .examples-grid {
@@ -1026,10 +1214,15 @@ export default function ChatPage() {
           margin-bottom: 12px;
         }
 
-        .stats-grid {
+        .stats-grid,
+        .mini-summary-row {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
+        }
+
+        .mini-summary-row {
+          margin-top: 13px;
         }
 
         .record-header {
@@ -1050,6 +1243,34 @@ export default function ChatPage() {
           border-radius: 999px;
         }
 
+        .typing-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 999px;
+          background: #b9caff;
+          animation: pulse 1.1s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) {
+          animation-delay: 0.12s;
+        }
+
+        .typing-dot:nth-child(3) {
+          animation-delay: 0.24s;
+        }
+
+        @keyframes pulse {
+          0%,
+          100% {
+            transform: translateY(0);
+            opacity: 0.45;
+          }
+          50% {
+            transform: translateY(-2px);
+            opacity: 1;
+          }
+        }
+
         @media (max-width: 1100px) {
           .content-grid {
             grid-template-columns: 1fr;
@@ -1062,7 +1283,8 @@ export default function ChatPage() {
 
         @media (max-width: 760px) {
           .examples-grid,
-          .stats-grid {
+          .stats-grid,
+          .mini-summary-row {
             grid-template-columns: 1fr;
           }
 
@@ -1080,10 +1302,18 @@ export default function ChatPage() {
           .hero-actions :global(a) {
             flex: 1 1 100%;
           }
+
+          .conversation-tools {
+            align-items: stretch;
+          }
         }
 
         @media (max-width: 560px) {
           .composer-footer :global(button) {
+            width: 100%;
+          }
+
+          .composer-actions-left {
             width: 100%;
           }
         }
