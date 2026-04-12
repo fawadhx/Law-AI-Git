@@ -251,3 +251,75 @@ def retrieve_scored_legal_sources(
 
 def retrieve_legal_sources(query: str, limit: int = 3) -> list[LegalSourceRecord]:
     return [record for _, record in retrieve_scored_legal_sources(query, limit=limit)]
+
+def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
+    query_lower = normalize_text(query)
+    searchable_text = normalize_text(
+        " ".join(
+            [
+                record.law_name,
+                record.section_title,
+                record.summary,
+                record.excerpt,
+                " ".join(record.tags),
+            ]
+        )
+    )
+
+    reasons: list[str] = []
+
+    if normalize_text(record.section_title) in query_lower:
+        reasons.append(f"Direct match with section title: {record.section_title}.")
+
+    if normalize_text(record.law_name) in query_lower:
+        reasons.append(f"Direct mention of law name: {record.law_name}.")
+
+    if record.section_number and record.section_number in query_lower:
+        reasons.append(f"Section number {record.section_number} was mentioned in the query.")
+
+    matched_tags = [
+        tag for tag in record.tags if normalize_text(tag) in query_lower
+    ]
+    if matched_tags:
+        reasons.append(f"Matched legal tags: {', '.join(matched_tags[:3])}.")
+
+    expanded_terms = expand_query_terms(query)
+    concept_hits = []
+    for term in expanded_terms:
+        if len(term) >= 4 and term in searchable_text:
+            concept_hits.append(term)
+
+    unique_hits: list[str] = []
+    seen: set[str] = set()
+    for hit in concept_hits:
+        if hit not in seen:
+            seen.add(hit)
+            unique_hits.append(hit)
+
+    if unique_hits:
+        reasons.append(
+            f"Conceptual keyword overlap found: {', '.join(unique_hits[:4])}."
+        )
+
+    punishment_requested = any(
+        word in query_lower for word in ["punishment", "penalty", "sentence", "fine", "jail"]
+    )
+    if punishment_requested and "punishment" in normalize_text(record.section_title):
+        reasons.append("Punishment-related wording in the question aligns with this provision.")
+
+    online_requested = any(
+        phrase in query_lower for phrase in ["online", "internet", "cyber", "social media"]
+    )
+    if online_requested and record.law_name == "Prevention of Electronic Crimes Act":
+        reasons.append("Online or cyber wording in the question aligns with PECA-related provisions.")
+
+    police_requested = any(
+        word in query_lower for word in ["police", "arrest", "detain", "custody", "warrant"]
+    )
+    if police_requested and record.law_name == "Code of Criminal Procedure":
+        reasons.append("Police or detention wording in the question aligns with criminal-procedure provisions.")
+
+    if not reasons:
+        reasons.append("The prototype found a general text similarity with this record.")
+
+    return reasons[:4]

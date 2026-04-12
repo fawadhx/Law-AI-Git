@@ -1,7 +1,16 @@
-from app.schemas.chat import ChatCategory, ChatConfidence, ChatQueryResponse, Citation
+from app.schemas.chat import (
+    ChatCategory,
+    ChatConfidence,
+    ChatQueryResponse,
+    Citation,
+    MatchExplanation,
+)
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_classification_service import detect_question_category
-from app.services.legal_retrieval_service import retrieve_scored_legal_sources
+from app.services.legal_retrieval_service import (
+    explain_record_match,
+    retrieve_scored_legal_sources,
+)
 
 
 LEGAL_DISCLAIMER = (
@@ -24,6 +33,23 @@ def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
         )
 
     return citations
+
+
+def build_why_matched(
+    question: str,
+    records: list[LegalSourceRecord],
+) -> list[MatchExplanation]:
+    explanations: list[MatchExplanation] = []
+
+    for record in records[:3]:
+        explanations.append(
+            MatchExplanation(
+                title=f"{record.citation_label} — {record.section_title}",
+                points=explain_record_match(question, record),
+            )
+        )
+
+    return explanations
 
 
 def determine_confidence(
@@ -213,6 +239,7 @@ def generate_mock_legal_response(question: str) -> ChatQueryResponse:
 
     answer = build_answer(question, records, detected_category, confidence)
     citations = build_citations(records)
+    why_matched = build_why_matched(question, records)
 
     return ChatQueryResponse(
         answer=answer,
@@ -223,4 +250,5 @@ def generate_mock_legal_response(question: str) -> ChatQueryResponse:
             label=detected_category["label"],
         ),
         confidence=confidence,
+        why_matched=why_matched,
     )

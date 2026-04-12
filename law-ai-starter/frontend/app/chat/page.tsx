@@ -22,12 +22,18 @@ type ChatConfidence = {
   matched_records: number;
 };
 
+type MatchExplanation = {
+  title: string;
+  points: string[];
+};
+
 type ChatQueryResponse = {
   answer: string;
   citations: Citation[];
   disclaimer: string;
   category: ChatCategory;
   confidence: ChatConfidence;
+  why_matched: MatchExplanation[];
 };
 
 type Message = {
@@ -829,6 +835,84 @@ export default function ChatPage() {
                   marginBottom: "8px",
                 }}
               >
+                
+                <section style={{ ...cardStyle, padding: "24px" }}>
+                  <div
+                    style={{
+                      fontSize: "14px",
+                      color: "#b9caff",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Why this matched
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "22px",
+                      fontWeight: 700,
+                      marginBottom: "16px",
+                    }}
+                  >
+                    Match explanation
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                    {latestResponse?.why_matched?.length ? (
+                      latestResponse.why_matched.map((item, index) => (
+                        <div
+                          key={`${item.title}-${index}`}
+                          style={{
+                            background: "rgba(10, 19, 43, 0.95)",
+                            border: "1px solid rgba(132, 151, 220, 0.14)",
+                            borderRadius: "18px",
+                            padding: "16px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: "15px",
+                              fontWeight: 700,
+                              color: "#ffffff",
+                              lineHeight: 1.6,
+                              marginBottom: "10px",
+                            }}
+                          >
+                            {item.title}
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                            {item.points.map((point, pointIndex) => (
+                              <div
+                                key={`${item.title}-${pointIndex}`}
+                                style={{
+                                  color: "#dbe4ff",
+                                  lineHeight: 1.7,
+                                  fontSize: "14px",
+                                }}
+                              >
+                                • {point}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div
+                        style={{
+                          background: "rgba(10, 19, 43, 0.95)",
+                          border: "1px solid rgba(132, 151, 220, 0.14)",
+                          borderRadius: "18px",
+                          padding: "16px",
+                          color: "#c6d3f3",
+                          lineHeight: 1.7,
+                        }}
+                      >
+                        Ask a question to see which keywords, tags, or legal signals likely caused the current match.
+                      </div>
+                    )}
+                  </div>
+                </section>
+                
                 Matched law cards
               </div>
               <div

@@ -19,6 +19,11 @@ class ChatConfidence(BaseModel):
     matched_records: int
 
 
+class MatchExplanation(BaseModel):
+    title: str
+    points: list[str] = Field(default_factory=list)
+
+
 class ChatQueryRequest(BaseModel):
     question: str
 
@@ -29,3 +34,4 @@ class ChatQueryResponse(BaseModel):
     disclaimer: str
     category: ChatCategory
     confidence: ChatConfidence
+    why_matched: list[MatchExplanation] = Field(default_factory=list)
