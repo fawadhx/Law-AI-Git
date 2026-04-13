@@ -1,3 +1,4 @@
+
 from collections import Counter
 
 from app.schemas.chat import (
@@ -10,6 +11,8 @@ from app.schemas.chat import (
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_classification_service import detect_question_category
 from app.services.legal_retrieval_service import (
+    build_query_signals,
+    extract_section_references,
     explain_record_match,
     retrieve_scored_legal_sources,
 )
@@ -44,7 +47,6 @@ def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
     return citations
 
 
-
 def determine_confidence(
     scored_records: list[tuple[int, LegalSourceRecord]],
 ) -> ChatConfidence:
@@ -56,14 +58,14 @@ def determine_confidence(
     second_score = scored_records[1][0] if len(scored_records) > 1 else 0
     score_gap = top_score - second_score
 
-    if top_score >= 20 and total_matches >= 2:
+    if top_score >= 22 and total_matches >= 2:
         level = "high"
-    elif top_score >= 12:
+    elif top_score >= 13:
         level = "medium"
     else:
         level = "low"
 
-    if level == "medium" and score_gap >= 8 and top_score >= 16:
+    if level == "medium" and score_gap >= 9 and top_score >= 17:
         level = "high"
 
     return ChatConfidence(
@@ -71,7 +73,6 @@ def determine_confidence(
         score=top_score,
         matched_records=total_matches,
     )
-
 
 
 def build_why_matched(
@@ -90,7 +91,6 @@ def build_why_matched(
         )
 
     return explanations
-
 
 
 def build_category_guidance(category_key: str) -> str:
@@ -119,12 +119,16 @@ def build_category_guidance(category_key: str) -> str:
             "This appears to involve harassment, stalking, insulting modesty, privacy intrusion, or related conduct. "
             "Depending on the facts, both PPC and PECA provisions may become relevant at the same time."
         ),
+        "assault_force": (
+            "This appears to involve assault, criminal force, slapping, pushing, hitting, or similar physical-force conduct. "
+            "The system usually checks the basic assault provision first and then any more specific modesty or punishment section if the facts point there."
+        ),
         "cybercrime": (
             "This appears to involve an online or digital issue. "
             "The system usually checks PECA-related provisions first, but may also surface PPC overlap where the facts include threats, fraud, or harassment."
         ),
         "trespass": (
-            "This appears to involve unlawful entry, land possession, or criminal-trespass issues. "
+            "This appears to involve unlawful entry, land possession, criminal trespass, or house-trespass issues. "
             "The system may also surface property-damage overlap if the facts mention breaking or damaging property."
         ),
         "restraint_confinement": (
@@ -152,7 +156,6 @@ def build_category_guidance(category_key: str) -> str:
     return guidance_map.get(category_key, guidance_map["general"])
 
 
-
 def build_confidence_note(confidence: ChatConfidence) -> str:
     if confidence.level == "high":
         return (
@@ -167,10 +170,8 @@ def build_confidence_note(confidence: ChatConfidence) -> str:
     )
 
 
-
 def is_primary_record(record: LegalSourceRecord) -> bool:
     return record.provision_kind in PRIMARY_KINDS
-
 
 
 def build_record_reference(record: LegalSourceRecord) -> str:
@@ -190,7 +191,6 @@ def build_record_reference(record: LegalSourceRecord) -> str:
         lines.append(f"  Related sections: {', '.join(record.related_sections[:3])}")
 
     return "\n".join(lines)
-
 
 
 def summarize_overlap(records: list[LegalSourceRecord]) -> str | None:
@@ -222,7 +222,6 @@ def summarize_overlap(records: list[LegalSourceRecord]) -> str | None:
     return None
 
 
-
 def split_records(records: list[LegalSourceRecord]) -> tuple[list[LegalSourceRecord], list[LegalSourceRecord]]:
     primary_records = [record for record in records if is_primary_record(record)]
     support_records = [record for record in records if record not in primary_records]
@@ -234,12 +233,49 @@ def split_records(records: list[LegalSourceRecord]) -> tuple[list[LegalSourceRec
     return primary_records, support_records
 
 
+def build_rephrase_suggestions(question: str, category_key: str) -> list[str]:
+    signals = build_query_signals(question)
+    suggestions: list[str] = []
+
+    if signals["section_lookup"]:
+        suggestions.append("Ask with both the law and section, for example: What does PPC section 448 cover?")
+    if category_key == "trespass" or signals["house_context"]:
+        suggestions.append("Mention whether it was a house/home entry, plot entry, or staying on property after being asked to leave.")
+    if category_key == "assault_force" or signals["assault"]:
+        suggestions.append("Mention whether the conduct involved slapping, pushing, hitting, grabbing, or use of force.")
+    if category_key == "harassment" or signals["mentions_photo"]:
+        suggestions.append("Mention whether there were repeated calls/messages, private photos, threats, or conduct involving a woman or girl.")
+    if category_key == "cybercrime" or signals["online"] or signals["identity"]:
+        suggestions.append("Mention whether the issue involved a fake profile, CNIC misuse, account access, digital evidence, or an online scam.")
+    if category_key == "robbery_extortion" or signals["threat"]:
+        suggestions.append("Mention whether property was taken, money was demanded, or force or fear was used.")
+    if not suggestions:
+        suggestions.extend(
+            [
+                "Use simple facts like who did what, to whom, and whether it happened online or offline.",
+                "Mention whether money, property, threats, physical force, or police action were involved.",
+            ]
+        )
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for suggestion in suggestions:
+        if suggestion not in seen:
+            seen.add(suggestion)
+            unique.append(suggestion)
+
+    return unique[:3]
+
 
 def build_no_match_answer(
     question: str,
     category: dict[str, str],
     confidence: ChatConfidence,
 ) -> str:
+    suggestion_lines = "\n".join(
+        f"- {suggestion}" for suggestion in build_rephrase_suggestions(question, category["key"])
+    )
+
     return (
         "No strong legal-source match was found in the current prototype dataset.\n\n"
         f"Confidence level: {confidence.level.upper()}\n\n"
@@ -248,7 +284,9 @@ def build_no_match_answer(
         "- This does not mean no law applies. It only means the current prototype dataset is still limited.\n\n"
         "Issue-type guidance:\n"
         f"- {build_category_guidance(category['key'])}\n\n"
-        "Try asking with clearer legal terms such as:\n"
+        "Try asking with clearer facts like:\n"
+        f"{suggestion_lines}\n\n"
+        "Useful example terms currently covered in the prototype include:\n"
         "- theft\n"
         "- cheating or 420\n"
         "- criminal breach of trust\n"
@@ -256,16 +294,82 @@ def build_no_match_answer(
         "- detention for 24 hours\n"
         "- criminal intimidation\n"
         "- defamation\n"
+        "- assault or slapping / pushing\n"
+        "- house-trespass or illegal home entry\n"
         "- sexual harassment or cyber stalking\n"
         "- criminal trespass\n"
+        "- property damage / mischief\n"
         "- misuse of CNIC or fake profile\n"
         "- a specific section number\n\n"
         f'Your question was: "{question.strip()}"'
     )
 
 
+def build_weak_match_answer(
+    question: str,
+    records: list[LegalSourceRecord],
+    category: dict[str, str],
+    confidence: ChatConfidence,
+) -> str:
+    lines = [
+        "Closest currently available legal information",
+        "",
+        f"Confidence level: {confidence.level.upper()}",
+        "",
+        "The prototype found only a weak or partial match for this wording.",
+        "That means the sections below are the nearest current records, but they may not fully capture the facts as asked.",
+        "",
+        "Closest prototype sections:",
+    ]
+
+    for record in records[:3]:
+        lines.append(build_record_reference(record))
+
+    lines.extend(
+        [
+            "",
+            "Issue-type guidance:",
+            build_category_guidance(category["key"]),
+            "",
+            "Try rephrasing with clearer facts:",
+        ]
+    )
+
+    for suggestion in build_rephrase_suggestions(question, category["key"]):
+        lines.append(f"- {suggestion}")
+
+    lines.extend(
+        [
+            "",
+            "Current prototype note:",
+            (
+                "This answer is based on the internal structured legal-source records currently "
+                "loaded into the prototype. It is general legal information, not a substitute for "
+                "professional legal advice."
+            ),
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def build_specific_section_note(question: str, records: list[LegalSourceRecord]) -> str | None:
+    refs = extract_section_references(question)
+    if not refs or not records:
+        return None
+
+    matched_sections = {record.section_number.upper() for record in records}
+    requested = [section for _, section in refs]
+    if any(section in matched_sections for section in requested):
+        return (
+            "The query appears to ask about a specific section number, so the system prioritized any exact section match before adding related provisions."
+        )
+
+    return None
+
 
 def build_match_answer(
+    question: str,
     records: list[LegalSourceRecord],
     category: dict[str, str],
     confidence: ChatConfidence,
@@ -293,6 +397,10 @@ def build_match_answer(
 
     if primary.punishment_summary:
         lines.extend(["", f"Primary punishment note: {primary.punishment_summary}"])
+
+    section_note = build_specific_section_note(question, records)
+    if section_note:
+        lines.extend(["", "Section-note guidance:", section_note])
 
     overlap_note = summarize_overlap(records)
     if overlap_note:
@@ -329,9 +437,9 @@ def build_match_answer(
     return "\n".join(lines)
 
 
-
 def build_answer(
     question: str,
+    scored_records: list[tuple[int, LegalSourceRecord]],
     records: list[LegalSourceRecord],
     category: dict[str, str],
     confidence: ChatConfidence,
@@ -339,8 +447,10 @@ def build_answer(
     if not records:
         return build_no_match_answer(question, category, confidence)
 
-    return build_match_answer(records, category, confidence)
+    if confidence.level == "low" and scored_records and scored_records[0][0] < 8:
+        return build_weak_match_answer(question, records, category, confidence)
 
+    return build_match_answer(question, records, category, confidence)
 
 
 def generate_mock_legal_response(question: str) -> ChatQueryResponse:
@@ -350,7 +460,7 @@ def generate_mock_legal_response(question: str) -> ChatQueryResponse:
     detected_category = detect_question_category(question, records)
     confidence = determine_confidence(scored_records)
 
-    answer = build_answer(question, records, detected_category, confidence)
+    answer = build_answer(question, scored_records, records, detected_category, confidence)
     citations = build_citations(records)
     why_matched = build_why_matched(question, records)
 

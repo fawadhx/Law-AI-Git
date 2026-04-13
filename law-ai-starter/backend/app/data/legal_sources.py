@@ -755,4 +755,119 @@ LEGAL_SOURCES: list[LegalSourceRecord] = [
         punishment_summary="The punishment may extend to three years or fine up to five million rupees, or both.",
         provision_kind="offence",
     ),
+
+    LegalSourceRecord(
+        id="ppc-351",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="351",
+        section_title="Assault",
+        summary=(
+            "This provision generally covers gestures or preparations that create an apprehension "
+            "of immediate criminal force in the mind of another person."
+        ),
+        excerpt=(
+            "Whoever makes a gesture, or preparation, intending or knowing it to be likely that such "
+            "gesture or preparation will cause another person present to apprehend that criminal force "
+            "is about to be used against that person, may commit assault."
+        ),
+        citation_label="PPC Section 351",
+        tags=["assault", "criminal force", "attack", "gesture causing apprehension"],
+        aliases=["slap threat", "push attack", "physical assault", "maar peet", "attack"],
+        keywords=["slapped me", "pushed me", "raised hand", "tried to hit"],
+        related_sections=["PPC Section 352"],
+        offence_group="assault_offence",
+        provision_kind="definition",
+    ),
+    LegalSourceRecord(
+        id="ppc-352",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="352",
+        section_title="Punishment for assault or criminal force otherwise than on grave provocation",
+        summary=(
+            "This provision covers punishment that may apply where assault or criminal force is established "
+            "and no more specific aggravated section is the better fit."
+        ),
+        excerpt=(
+            "Whoever assaults or uses criminal force to any person, otherwise than on grave and sudden "
+            "provocation, may be punished with short imprisonment, fine, or both."
+        ),
+        citation_label="PPC Section 352",
+        tags=["assault", "criminal force", "punishment", "physical attack"],
+        aliases=["assault punishment", "criminal force punishment"],
+        keywords=["punishment for assault", "saza for assault", "slap punishment"],
+        related_sections=["PPC Section 351", "PPC Section 354"],
+        offence_group="assault_offence",
+        punishment_summary="The section provides punishment for assault or criminal force through short imprisonment, fine, or both.",
+        provision_kind="punishment",
+    ),
+    LegalSourceRecord(
+        id="ppc-354",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="354",
+        section_title="Assault or criminal force to woman with intent to outrage her modesty",
+        summary=(
+            "This provision generally applies where assault or criminal force is used against a woman "
+            "with intent to outrage, or with knowledge that it is likely to outrage, her modesty."
+        ),
+        excerpt=(
+            "Whoever assaults or uses criminal force to any woman, intending to outrage or knowing it to be "
+            "likely that thereby her modesty will be outraged, may commit an offence under this section."
+        ),
+        citation_label="PPC Section 354",
+        tags=["woman", "modesty", "sexual harassment", "criminal force", "assault"],
+        aliases=["touching woman", "grabbed a woman", "outrage modesty", "molestation"],
+        keywords=["touched her inappropriately", "grabbed her", "physical sexual harassment"],
+        related_sections=["PPC Section 509", "PPC Section 352"],
+        offence_group="harassment_offence",
+        punishment_summary="The punishment may extend to two years, or fine, or both.",
+        provision_kind="aggravated_offence",
+    ),
+    LegalSourceRecord(
+        id="ppc-442",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="442",
+        section_title="House-trespass",
+        summary=(
+            "This provision generally applies where criminal trespass takes place by entering into or "
+            "remaining in a building, tent, or vessel used as a human dwelling, place of worship, or "
+            "place for custody of property."
+        ),
+        excerpt=(
+            "Whoever commits criminal trespass by entering into or remaining in any building, tent, or vessel "
+            "used as a human dwelling, or any building used as a place for worship or for custody of property, "
+            "is said to commit house-trespass."
+        ),
+        citation_label="PPC Section 442",
+        tags=["house trespass", "home entry", "illegal house entry", "home invasion"],
+        aliases=["entered my house", "entered my home", "broke into house", "ghar mein ghus gaya"],
+        keywords=["house entry", "home intrusion", "break into my home"],
+        related_sections=["PPC Section 448", "PPC Section 441"],
+        offence_group="property_offence",
+        provision_kind="aggravated_offence",
+    ),
+    LegalSourceRecord(
+        id="ppc-448",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="448",
+        section_title="Punishment for house-trespass",
+        summary="This provision covers punishment that may apply where house-trespass is established.",
+        excerpt=(
+            "Whoever commits house-trespass may be punished with imprisonment which may extend to one year, "
+            "or with fine, or with both."
+        ),
+        citation_label="PPC Section 448",
+        tags=["house trespass", "punishment", "home invasion", "illegal house entry"],
+        aliases=["house trespass punishment", "home trespass punishment"],
+        keywords=["punishment for house trespass", "section 448", "break into house punishment"],
+        related_sections=["PPC Section 442", "PPC Section 441", "PPC Section 447"],
+        offence_group="property_offence",
+        punishment_summary="The punishment may extend to one year, fine, or both.",
+        provision_kind="punishment",
+    ),
+
 ]

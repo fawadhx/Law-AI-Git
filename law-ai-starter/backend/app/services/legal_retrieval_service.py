@@ -1,5 +1,5 @@
+
 import re
-from collections import defaultdict
 
 from app.data.legal_sources import LEGAL_SOURCES
 from app.schemas.legal_source import LegalSourceRecord
@@ -9,17 +9,15 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
     "theft": [
         "theft",
         "steal",
-        "stolen",
         "stealing",
+        "stolen",
         "snatch",
         "snatched",
-        "property",
-        "take",
-        "took",
-        "taken",
-        "without permission",
-        "mobile",
+        "mobile snatching",
+        "wallet",
         "phone",
+        "took my phone",
+        "without consent",
     ],
     "punishment": [
         "punishment",
@@ -39,6 +37,8 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "criminal intimidation",
         "alarm",
         "blackmail",
+        "kill me",
+        "harm me",
     ],
     "defamation": [
         "defamation",
@@ -47,6 +47,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "false statement",
         "badnami",
         "false allegation",
+        "viral lie",
     ],
     "online": [
         "online",
@@ -58,6 +59,8 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "instagram",
         "whatsapp",
         "tiktok",
+        "account",
+        "profile",
     ],
     "privacy": [
         "privacy",
@@ -65,16 +68,21 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "personal data",
         "personal information",
         "private photos",
+        "personal photos",
+        "leak photos",
     ],
     "modesty": [
         "modesty",
+        "harassment",
+        "sexual harassment",
+        "molestation",
+        "touched her",
+        "grabbed her",
+        "private photos",
         "image misuse",
-        "photo misuse",
-        "explicit image",
         "video misuse",
         "minor",
         "child",
-        "harassment",
     ],
     "arrest": [
         "arrest",
@@ -84,14 +92,15 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "detained",
         "without warrant",
         "warrant",
+        "police picked me",
     ],
     "detention": [
         "detention",
         "24 hours",
         "twenty four hours",
         "twenty-four hours",
-        "custody",
         "illegal detention",
+        "kept in custody",
     ],
     "unauthorized_access": [
         "unauthorised access",
@@ -115,11 +124,13 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "property deal",
         "420",
         "dhoka",
+        "fake promise",
     ],
     "breach_of_trust": [
         "criminal breach of trust",
         "breach of trust",
         "entrusted property",
+        "entrusted money",
         "misappropriation",
         "amanat",
         "khayanat",
@@ -131,20 +142,47 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "unlawful entry",
         "land dispute",
         "property entry",
+        "entered my plot",
+        "entered my house",
+        "entered my home",
+        "break into house",
+        "break into home",
+        "home intrusion",
         "qabza",
-        "entered",
-        "enter",
-        "plot",
-        "leave",
+    ],
+    "house_trespass": [
+        "house trespass",
+        "house-trespass",
+        "entered my house",
+        "entered my home",
+        "broke into my house",
+        "broke into my home",
+        "home invasion",
+        "ghar mein ghus gaya",
     ],
     "harassment": [
         "harassment",
-        "sexual harassment",
         "stalking",
         "cyber stalking",
         "insult modesty",
-        "privacy intrusion",
         "eve teasing",
+        "unwanted contact",
+        "calling me again and again",
+        "messaging me repeatedly",
+    ],
+    "assault": [
+        "assault",
+        "criminal force",
+        "slap",
+        "slapped",
+        "push",
+        "pushed",
+        "hit",
+        "beating",
+        "beat me",
+        "attack",
+        "attacked",
+        "grabbed me",
     ],
     "extortion": [
         "extortion",
@@ -159,13 +197,12 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
     "robbery": [
         "robbery",
         "mugging",
+        "gunpoint",
         "armed snatching",
         "snatching with force",
-        "gunpoint",
         "violent theft",
         "street robbery",
         "snatched at gunpoint",
-        "snatched with force",
     ],
     "restraint": [
         "wrongful restraint",
@@ -180,7 +217,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "locked in",
         "kept inside",
         "confined",
-        "locked me in a room",
+        "locked room",
         "band kar diya",
     ],
     "mischief": [
@@ -191,8 +228,8 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "damaged",
         "broke",
         "destroyed",
-        "car",
-        "vehicle",
+        "car windows",
+        "vehicle damage",
         "tod phod",
     ],
     "identity": [
@@ -210,6 +247,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "forged screenshot",
         "fake pdf",
         "edited digital evidence",
+        "fake screenshot",
     ],
     "electronic_fraud": [
         "electronic fraud",
@@ -228,6 +266,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "inspector",
     ],
 }
+
 
 PHRASE_HINTS: dict[str, list[str]] = {
     "online threat": ["threat", "online"],
@@ -256,15 +295,26 @@ PHRASE_HINTS: dict[str, list[str]] = {
     "otp scam": ["electronic_fraud", "identity", "online"],
     "fake profile": ["identity", "online", "harassment"],
     "blackmail online": ["threat", "online", "harassment"],
+    "entered my house": ["house_trespass", "trespass"],
+    "entered my home": ["house_trespass", "trespass"],
+    "broke into my house": ["house_trespass", "trespass"],
+    "broke into my home": ["house_trespass", "trespass"],
+    "slapped me": ["assault"],
+    "pushed me": ["assault"],
+    "grabbed her": ["assault", "modesty", "harassment"],
+    "touched her": ["modesty", "harassment"],
+    "leak my photos": ["privacy", "harassment", "online", "threat"],
+    "private photos": ["privacy", "harassment", "online"],
 }
 
 
 PUNISHMENT_HINTS = ["punishment", "penalty", "sentence", "fine", "jail", "imprisonment", "saza"]
 ONLINE_HINTS = ["online", "internet", "cyber", "social media", "facebook", "instagram", "whatsapp", "tiktok"]
 POLICE_HINTS = ["police", "arrest", "detain", "custody", "warrant"]
-PROPERTY_HINTS = ["property", "money", "land", "plot", "phone", "wallet", "entrusted"]
+PROPERTY_HINTS = ["property", "money", "land", "plot", "phone", "wallet", "entrusted", "house", "home"]
 FRAUD_HINTS = ["cheat", "cheated", "cheating", "fraud", "scam", "deceive", "deceived", "deal", "property deal", "420", "trust", "entrusted", "amanat", "khayanat"]
-TRESPASS_HINTS = ["trespass", "illegal entry", "unlawful entry", "plot", "entered", "enter", "land", "leave"]
+TRESPASS_HINTS = ["trespass", "illegal entry", "unlawful entry", "plot", "entered", "enter", "land", "leave", "house", "home", "break into"]
+HOUSE_HINTS = ["house", "home", "flat", "dwelling"]
 EXTORTION_HINTS = ["extortion", "bhatta", "ransom", "money demand", "demanded money", "demanded money by threat", "blackmail for money", "fear of injury"]
 ROBBERY_HINTS = ["robbery", "mugging", "gunpoint", "armed snatching", "snatching with force", "snatched at gunpoint", "violent theft"]
 RESTRAINT_HINTS = ["wrongful restraint", "blocked way", "obstruct", "rasta", "prevented from going", "stopped me"]
@@ -273,9 +323,10 @@ MISCHIEF_HINTS = ["mischief", "vandalism", "property damage", "damaged", "broke"
 IDENTITY_HINTS = ["identity", "identity theft", "cnic", "impersonation", "fake profile", "my documents"]
 ELECTRONIC_FRAUD_HINTS = ["electronic fraud", "online scam", "digital scam", "fake website", "banking scam", "otp"]
 ELECTRONIC_FORGERY_HINTS = ["electronic forgery", "fake screenshot", "forged pdf", "edited digital evidence", "fake digital document"]
-THREAT_HINTS = ["threat", "threaten", "intimidation", "blackmail", "alarm"]
-HARASSMENT_HINTS = ["harassment", "stalking", "modesty", "privacy intrusion", "unwanted contact"]
-FORCE_HINTS = ["force", "gunpoint", "weapon", "armed", "violence"]
+THREAT_HINTS = ["threat", "threaten", "intimidation", "blackmail", "alarm", "leak"]
+HARASSMENT_HINTS = ["harassment", "stalking", "modesty", "privacy intrusion", "unwanted contact", "photos", "video"]
+ASSAULT_HINTS = ["assault", "slap", "slapped", "push", "pushed", "hit", "beating", "beat", "attacked", "grabbed"]
+FORCE_HINTS = ["force", "gunpoint", "weapon", "armed", "violence", "grabbed", "pushed"]
 
 
 PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
@@ -283,22 +334,63 @@ PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
 
 def normalize_text(value: str) -> str:
     value = value.strip().lower()
-    value = re.sub(r"[^a-z0-9\s\-]", " ", value)
+    value = re.sub(r"[^a-z0-9\s\-\/]", " ", value)
     value = re.sub(r"\s+", " ", value)
     return value
 
 
 def tokenize(value: str) -> list[str]:
-    cleaned = normalize_text(value)
-    return [token for token in cleaned.split(" ") if token]
+    return [token for token in normalize_text(value).split(" ") if token]
+
+
+def extract_section_references(query: str) -> list[tuple[str | None, str]]:
+    cleaned = normalize_text(query)
+    refs: list[tuple[str | None, str]] = []
+
+    patterns = [
+        r"(ppc|peca|crpc)\s+section\s+(\d+[a-z]?)",
+        r"section\s+(\d+[a-z]?)\s+(ppc|peca|crpc)",
+        r"u\s*\/?\s*s\s*(\d+[a-z]?)\s+(ppc|peca|crpc)",
+        r"\b(ppc|peca|crpc)\s+(\d+[a-z]?)\b",
+    ]
+
+    for pattern in patterns:
+        for match in re.finditer(pattern, cleaned):
+            groups = match.groups()
+            if len(groups) != 2:
+                continue
+            if groups[0] in {"ppc", "peca", "crpc"}:
+                law_hint, section_number = groups[0], groups[1]
+            else:
+                section_number, law_hint = groups[0], groups[1]
+            refs.append((law_hint, section_number.upper()))
+
+    for match in re.finditer(r"\bsection\s+(\d+[a-z]?)\b", cleaned):
+        refs.append((None, match.group(1).upper()))
+
+    unique: list[tuple[str | None, str]] = []
+    seen: set[tuple[str | None, str]] = set()
+    for ref in refs:
+        if ref not in seen:
+            seen.add(ref)
+            unique.append(ref)
+    return unique
+
+
+def law_short_name(record: LegalSourceRecord) -> str:
+    if record.law_name == "Pakistan Penal Code":
+        return "ppc"
+    if record.law_name == "Prevention of Electronic Crimes Act":
+        return "peca"
+    if record.law_name == "Code of Criminal Procedure":
+        return "crpc"
+    return ""
 
 
 def expand_query_terms(query: str) -> list[str]:
     query_lower = normalize_text(query)
     expanded_terms: list[str] = []
-
-    base_tokens = tokenize(query)
-    expanded_terms.extend(base_tokens)
+    expanded_terms.extend(tokenize(query))
 
     for phrase, concepts in PHRASE_HINTS.items():
         if phrase in query_lower:
@@ -310,14 +402,12 @@ def expand_query_terms(query: str) -> list[str]:
     for concept, synonyms in CONCEPT_SYNONYMS.items():
         concept_matched = concept in query_lower
         synonym_matched = any(normalize_text(synonym) in query_lower for synonym in synonyms)
-
         if concept_matched or synonym_matched:
             expanded_terms.append(concept)
             expanded_terms.extend(synonyms)
 
-    seen: set[str] = set()
     unique_terms: list[str] = []
-
+    seen: set[str] = set()
     for term in expanded_terms:
         normalized = normalize_text(term)
         if normalized and normalized not in seen:
@@ -325,7 +415,6 @@ def expand_query_terms(query: str) -> list[str]:
             unique_terms.append(normalized)
 
     return unique_terms
-
 
 
 def build_query_signals(query: str) -> dict[str, bool]:
@@ -337,6 +426,7 @@ def build_query_signals(query: str) -> dict[str, bool]:
         "property": any(word in query_lower for word in PROPERTY_HINTS),
         "fraud": any(word in query_lower for word in FRAUD_HINTS),
         "trespass": any(word in query_lower for word in TRESPASS_HINTS),
+        "house_context": any(word in query_lower for word in HOUSE_HINTS),
         "extortion": any(word in query_lower for word in EXTORTION_HINTS),
         "robbery": any(word in query_lower for word in ROBBERY_HINTS),
         "restraint": any(word in query_lower for word in RESTRAINT_HINTS),
@@ -347,10 +437,53 @@ def build_query_signals(query: str) -> dict[str, bool]:
         "electronic_forgery": any(word in query_lower for word in ELECTRONIC_FORGERY_HINTS),
         "threat": any(word in query_lower for word in THREAT_HINTS),
         "harassment": any(word in query_lower for word in HARASSMENT_HINTS),
+        "assault": any(word in query_lower for word in ASSAULT_HINTS),
         "force": any(word in query_lower for word in FORCE_HINTS),
         "mentions_money": "money" in query_lower,
+        "mentions_woman": any(word in query_lower for word in ["woman", "women", "girl", "female", "wife", "lady"]),
+        "mentions_photo": any(word in query_lower for word in ["photo", "photos", "video", "picture", "images"]),
+        "section_lookup": "section " in query_lower or "u/s" in query_lower or query_lower.startswith(("ppc ", "peca ", "crpc ")),
     }
 
+
+def is_primary_record(record: LegalSourceRecord) -> bool:
+    return record.provision_kind in PRIMARY_KINDS
+
+
+def citation_reference(record: LegalSourceRecord) -> str:
+    return normalize_text(record.citation_label)
+
+
+def record_reference_matches(reference: str, record: LegalSourceRecord) -> bool:
+    ref = normalize_text(reference)
+    if not ref:
+        return False
+
+    candidates = {
+        normalize_text(record.citation_label),
+        normalize_text(f"{record.law_name} section {record.section_number}"),
+        normalize_text(f"{law_short_name(record)} section {record.section_number}"),
+        normalize_text(f"section {record.section_number}"),
+    }
+    return ref in candidates or any(candidate in ref or ref in candidate for candidate in candidates)
+
+
+def score_exact_section_match(query: str, record: LegalSourceRecord) -> int:
+    references = extract_section_references(query)
+    if not references:
+        return 0
+
+    score = 0
+    for law_hint, section_number in references:
+        if section_number != record.section_number.upper():
+            continue
+        score += 12
+        if law_hint and law_hint == law_short_name(record):
+            score += 8
+        elif law_hint:
+            score -= 6
+
+    return score
 
 
 def score_record(query: str, record: LegalSourceRecord) -> int:
@@ -360,7 +493,6 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
 
     searchable_text = normalize_text(" ".join(record.searchable_parts))
     searchable_tokens = set(tokenize(searchable_text))
-
     score = 0
 
     for term in query_terms:
@@ -384,15 +516,17 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
         score += 4
 
     if citation_label and citation_label in query_lower:
-        score += 5
+        score += 7
 
     for tag in record.tags + record.aliases + record.keywords:
         tag_normalized = normalize_text(tag)
         if tag_normalized and tag_normalized in query_lower:
             score += 3
 
-    if record.section_number and record.section_number in query_lower:
-        score += 3
+    score += score_exact_section_match(query, record)
+
+    if record.section_number and f" {record.section_number.lower()} " in f" {query_lower} ":
+        score += 2
 
     if signals["punishment"] and record.provision_kind == "punishment":
         score += 5
@@ -403,9 +537,9 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
         score += 4
 
     if signals["police"] and record.law_name == "Code of Criminal Procedure":
-        score += 4
+        score += 5
     elif not signals["police"] and record.offence_group == "criminal_procedure":
-        score -= 4
+        score -= 5
 
     if signals["property"] and record.offence_group == "property_offence":
         score += 2
@@ -416,8 +550,14 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if signals["fraud"] and record.section_number in {"415", "417", "420"}:
         score += 5
 
-    if signals["trespass"] and (record.section_number in {"441", "447"} or record.offence_group == "property_offence"):
-        score += 4
+    if signals["trespass"] and record.section_number in {"441", "447", "442", "448"}:
+        score += 6
+
+    if signals["house_context"] and signals["trespass"] and record.section_number in {"442", "448"}:
+        score += 9
+
+    if signals["house_context"] and signals["trespass"] and record.section_number in {"441", "447"}:
+        score += 2
 
     if signals["extortion"] and record.offence_group == "violent_property_offence":
         score += 5
@@ -447,8 +587,29 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     elif signals["electronic_forgery"] and record.offence_group == "cyber_identity_offence":
         score += 5
 
+    if signals["assault"] and record.offence_group == "assault_offence":
+        score += 8
+
+    if signals["assault"] and record.section_number == "354" and signals["mentions_woman"]:
+        score += 8
+
+    if signals["mentions_woman"] and signals["harassment"] and record.section_number in {"354", "509", "21"}:
+        score += 7
+
+    if signals["mentions_photo"] and signals["threat"] and record.section_number in {"24", "503", "506", "21"}:
+        score += 7
+
+    if signals["mentions_photo"] and signals["harassment"] and record.section_number in {"24", "21", "20", "509"}:
+        score += 9
+
+    if any(phrase in query_lower for phrase in ["calling me", "keeps calling", "keeps messaging", "again and again"]) and record.section_number in {"24", "21", "509"}:
+        score += 7
+
     if signals["force"] and record.offence_group == "violent_property_offence":
         score += 5
+
+    if signals["force"] and record.offence_group == "assault_offence":
+        score += 3
 
     if signals["threat"] and signals["online"] and record.section_number in {"24", "503", "506"}:
         score += 5
@@ -456,7 +617,7 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if signals["harassment"] and signals["online"] and record.section_number in {"24", "509", "20", "21"}:
         score += 6
 
-    if signals["harassment"] and not signals["online"] and record.section_number == "509":
+    if signals["harassment"] and not signals["online"] and record.section_number in {"509", "354"}:
         score += 5
 
     if signals["identity"] and signals["fraud"] and record.section_number in {"14", "16", "420"}:
@@ -483,6 +644,15 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if "509" in query_lower and record.section_number == "509":
         score += 6
 
+    if "354" in query_lower and record.section_number == "354":
+        score += 8
+
+    if "448" in query_lower and record.section_number == "448":
+        score += 8
+
+    if "442" in query_lower and record.section_number == "442":
+        score += 8
+
     if "24" in query_lower and "cyber stalking" in query_lower and record.section_number == "24":
         score += 8
     elif "cyber stalking" in query_lower and record.section_number == "24":
@@ -497,68 +667,23 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if "14" in query_lower and "fraud" in query_lower and record.section_number == "14":
         score += 8
 
-    if "392" in query_lower and record.section_number == "392":
+    if "house trespass" in query_lower and record.section_number in {"442", "448"}:
         score += 8
 
-    if "384" in query_lower and record.section_number == "384":
+    if "entered my house" in query_lower and record.section_number in {"442", "448"}:
         score += 8
 
-    if "341" in query_lower and record.section_number == "341":
-        score += 7
-
-    if "342" in query_lower and record.section_number == "342":
-        score += 7
-
-    if "426" in query_lower and record.section_number == "426":
-        score += 7
-
-    if not signals["online"] and record.law_name == "Prevention of Electronic Crimes Act":
-        score -= 4
-
-    if not signals["harassment"] and not signals["online"] and record.offence_group == "harassment_offence":
-        score -= 4
-
-    if not signals["online"] and not signals["identity"] and record.offence_group == "cyber_identity_offence":
-        score -= 3
-
-    if signals["restraint"] and not signals["robbery"] and not signals["extortion"] and record.offence_group == "violent_property_offence":
-        score -= 3
-
-    if (signals["restraint"] or signals["confinement"]) and record.offence_group == "criminal_procedure":
-        score -= 5
-
-    if signals["mischief"] and record.offence_group == "cyber_identity_offence":
-        score -= 4
-
-    if signals["force"] and record.offence_group == "property_offence":
-        score -= 2
-
-    if signals["fraud"] and not signals["force"] and record.offence_group == "property_offence":
-        score -= 3
-
-    if signals["online"] and not signals["identity"] and record.offence_group == "property_damage_offence":
-        score -= 2
-
-    if "without permission" in query_lower and record.section_number == "378":
-        score += 5
-
-    if "gunpoint" in query_lower and record.section_number == "390":
-        score += 7
-
-    if "snatched" in query_lower and "gunpoint" in query_lower and record.section_number == "390":
+    if "broke into my house" in query_lower and record.section_number in {"442", "448"}:
         score += 8
 
-    if "bhatta" in query_lower and record.section_number == "383":
-        score += 7
-
-    if "demanded money" in query_lower and record.section_number == "383":
+    if any(phrase in query_lower for phrase in ["slapped me", "pushed me", "hit me", "beat me"]) and record.section_number in {"351", "352"}:
         score += 8
 
-    if "cnic" in query_lower and record.section_number == "16":
-        score += 8
+    if any(phrase in query_lower for phrase in ["grabbed a woman", "grabbed her", "touched her", "molested"]) and record.section_number in {"354", "509"}:
+        score += 9
 
-    if "car" in query_lower and "damaged" in query_lower and record.section_number == "425":
-        score += 7
+    if any(phrase in query_lower for phrase in ["leak photos", "private photos", "viral photos"]) and record.section_number in {"24", "21", "509", "503", "506"}:
+        score += 8
 
     if "fake profile" in query_lower and record.section_number in {"16", "24", "20"}:
         score += 7
@@ -567,31 +692,6 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
         score += 7
 
     return score
-
-
-
-def citation_reference(record: LegalSourceRecord) -> str:
-    return normalize_text(record.citation_label)
-
-
-
-def is_primary_record(record: LegalSourceRecord) -> bool:
-    return record.provision_kind in PRIMARY_KINDS
-
-
-
-def record_reference_matches(reference: str, record: LegalSourceRecord) -> bool:
-    ref = normalize_text(reference)
-    if not ref:
-        return False
-
-    candidates = {
-        normalize_text(record.citation_label),
-        normalize_text(f"{record.law_name} section {record.section_number}"),
-        normalize_text(f"section {record.section_number}"),
-    }
-    return ref in candidates or any(candidate in ref or ref in candidate for candidate in candidates)
-
 
 
 def find_linked_records(
@@ -622,7 +722,6 @@ def find_linked_records(
     return linked
 
 
-
 def should_include_overlap(
     primary_record: LegalSourceRecord,
     candidate_record: LegalSourceRecord,
@@ -639,11 +738,11 @@ def should_include_overlap(
     if candidate_record.offence_group == primary_record.offence_group and candidate_record.law_name == primary_record.law_name:
         return False
 
-    if candidate_score < max(8, top_score - 7):
+    if candidate_score < max(8, top_score - 8):
         return False
 
     if signals["online"] and signals["threat"]:
-        return candidate_record.section_number in {"24", "503", "506"}
+        return candidate_record.section_number in {"24", "503", "506", "21"}
 
     if signals["online"] and signals["harassment"]:
         return candidate_record.section_number in {"24", "509", "20", "21"}
@@ -655,16 +754,18 @@ def should_include_overlap(
         return candidate_record.section_number in {"390", "392", "503", "506", "383", "384"}
 
     if signals["trespass"] and signals["mischief"]:
-        return candidate_record.section_number in {"441", "447", "425", "426"}
+        return candidate_record.section_number in {"441", "447", "442", "448", "425", "426"}
 
-    if signals["harassment"] and "privacy" in query_lower:
-        return candidate_record.section_number in {"509", "20", "24"}
+    if signals["harassment"] and signals["mentions_photo"]:
+        return candidate_record.section_number in {"354", "509", "20", "21", "24", "503", "506"}
+
+    if signals["assault"] and signals["mentions_woman"]:
+        return candidate_record.section_number in {"354", "509", "352"}
 
     if candidate_record.law_name != primary_record.law_name:
         return True
 
     return candidate_record.offence_group != primary_record.offence_group
-
 
 
 def select_contextual_records(
@@ -683,7 +784,12 @@ def select_contextual_records(
     linked_records = sorted(
         find_linked_records(primary, scored_results),
         key=lambda item: (
-            1 if item[1].provision_kind == "punishment" else 0,
+            1
+            if (
+                (primary.provision_kind == "punishment" and is_primary_record(item[1]))
+                or (primary.provision_kind != "punishment" and item[1].provision_kind == "punishment")
+            )
+            else 0,
             item[0],
         ),
         reverse=True,
@@ -695,7 +801,13 @@ def select_contextual_records(
         score, record = item
         if record.id in selected_ids:
             continue
-        if signals["punishment"] or record.provision_kind == "punishment" or record.law_name != primary.law_name:
+        if (
+            signals["punishment"]
+            or signals["section_lookup"]
+            or record.provision_kind == "punishment"
+            or record.law_name != primary.law_name
+            or (signals["house_context"] and record.section_number in {"448", "447"})
+        ):
             selected.append(item)
             selected_ids.add(record.id)
             break
@@ -732,8 +844,6 @@ def select_contextual_records(
                 selected.append((linked_score, linked_record))
                 selected_ids.add(linked_record.id)
                 break
-        if len(selected) >= limit:
-            break
 
     minimum_fill_score = max(6, top_score - 10)
     for score, record in scored_results[1:]:
@@ -745,7 +855,6 @@ def select_contextual_records(
         selected_ids.add(record.id)
 
     return selected[:limit]
-
 
 
 def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int, LegalSourceRecord]]:
@@ -769,17 +878,14 @@ def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int,
     return select_contextual_records(query, all_results, limit)
 
 
-
 def retrieve_legal_sources(query: str, limit: int = 4) -> list[LegalSourceRecord]:
     return [record for _, record in retrieve_scored_legal_sources(query, limit=limit)]
-
 
 
 def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     query_lower = normalize_text(query)
     searchable_text = normalize_text(" ".join(record.searchable_parts))
     signals = build_query_signals(query)
-
     reasons: list[str] = []
 
     if normalize_text(record.section_title) in query_lower:
@@ -788,8 +894,9 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     if normalize_text(record.law_name) in query_lower:
         reasons.append(f"Direct mention of law name: {record.law_name}.")
 
-    if record.section_number and record.section_number in query_lower:
-        reasons.append(f"Section number {record.section_number} was mentioned in the query.")
+    exact_section_score = score_exact_section_match(query, record)
+    if exact_section_score > 0:
+        reasons.append(f"Specific section reference matched: {record.citation_label}.")
 
     matched_tags = [
         tag for tag in (record.tags + record.aliases + record.keywords)
@@ -798,9 +905,8 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     if matched_tags:
         reasons.append(f"Matched legal tags or aliases: {', '.join(matched_tags[:3])}.")
 
-    expanded_terms = expand_query_terms(query)
     concept_hits = []
-    for term in expanded_terms:
+    for term in expand_query_terms(query):
         if len(term) >= 4 and term in searchable_text:
             concept_hits.append(term)
 
@@ -812,9 +918,7 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
             unique_hits.append(hit)
 
     if unique_hits:
-        reasons.append(
-            f"Conceptual keyword overlap found: {', '.join(unique_hits[:4])}."
-        )
+        reasons.append(f"Conceptual keyword overlap found: {', '.join(unique_hits[:4])}.")
 
     if signals["punishment"] and record.provision_kind == "punishment":
         reasons.append("Punishment-related wording in the question aligns with this provision.")
@@ -825,8 +929,17 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     if signals["police"] and record.law_name == "Code of Criminal Procedure":
         reasons.append("Police or detention wording in the question aligns with criminal-procedure provisions.")
 
-    if signals["online"] and signals["threat"] and record.section_number in {"24", "503", "506"}:
-        reasons.append("The query combines online and threat signals, which can overlap across PECA and PPC provisions.")
+    if signals["house_context"] and signals["trespass"] and record.section_number in {"442", "448"}:
+        reasons.append("The query points to a house or home entry situation, which aligns with house-trespass provisions.")
+
+    if signals["assault"] and record.section_number in {"351", "352"}:
+        reasons.append("The query includes physical-force wording such as slapping, pushing, hitting, or assault.")
+
+    if signals["mentions_woman"] and record.section_number == "354":
+        reasons.append("The query mentions force or touching involving a woman, which aligns with modesty-related protection provisions.")
+
+    if signals["mentions_photo"] and signals["threat"] and record.section_number in {"24", "21", "503", "506"}:
+        reasons.append("The query combines threat wording with photo or privacy misuse, so overlapping PECA and PPC provisions were considered.")
 
     if signals["identity"] and (signals["fraud"] or signals["electronic_forgery"] or signals["electronic_fraud"]) and record.section_number in {"13", "14", "16", "420"}:
         reasons.append("The query combines identity misuse with fraud or forgery wording, so overlapping cyber-fraud provisions were considered.")
