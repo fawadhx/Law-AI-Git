@@ -90,6 +90,10 @@ def build_category_guidance(category_key: str) -> str:
             "This appears to involve cheating, fraud, dishonest inducement, or criminal breach of trust. "
             "The system will usually check the offence-defining section first and then any linked punishment section."
         ),
+        "robbery_extortion": (
+            "This appears to involve robbery, extortion, force-based snatching, or fear-based delivery of property. "
+            "The system will usually check the defining section first and then the linked punishment section."
+        ),
         "criminal_intimidation": (
             "This appears to involve a threat, intimidation, or pressure-related issue. "
             "The system will usually check criminal-intimidation provisions and their punishment section."
@@ -109,6 +113,14 @@ def build_category_guidance(category_key: str) -> str:
         "trespass": (
             "This appears to involve unlawful entry, land possession, or criminal-trespass issues. "
             "The system will usually check the trespass-defining provision and then the punishment section."
+        ),
+        "restraint_confinement": (
+            "This appears to involve a person being blocked, stopped, confined, or prevented from leaving a place. "
+            "The system will usually check wrongful-restraint or wrongful-confinement provisions and their punishment sections."
+        ),
+        "property_damage": (
+            "This appears to involve property damage, destruction, or vandalism. "
+            "The system will usually check the mischief provision and the linked punishment section."
         ),
         "arrest_detention": (
             "This appears to involve arrest, detention, custody, or police procedure. "

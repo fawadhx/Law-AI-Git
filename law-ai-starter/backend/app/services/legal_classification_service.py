@@ -31,6 +31,22 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
             "entrusted money",
         ],
     },
+    "robbery_extortion": {
+        "label": "Robbery / Extortion / Violent Taking",
+        "keywords": [
+            "robbery",
+            "extortion",
+            "mugging",
+            "gunpoint",
+            "bhatta",
+            "ransom",
+            "money demand",
+            "snatching with force",
+            "snatched at gunpoint",
+            "demanded money",
+            "armed snatching",
+        ],
+    },
     "criminal_intimidation": {
         "label": "Threat / Criminal Intimidation",
         "keywords": [
@@ -90,6 +106,11 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
             "unauthorised access",
             "minor",
             "image misuse",
+            "identity theft",
+            "cnic",
+            "fake profile",
+            "electronic fraud",
+            "electronic forgery",
         ],
     },
     "trespass": {
@@ -102,6 +123,33 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
             "plot dispute",
             "unlawful entry",
             "qabza",
+        ],
+    },
+    "restraint_confinement": {
+        "label": "Wrongful Restraint / Confinement",
+        "keywords": [
+            "wrongful restraint",
+            "wrongful confinement",
+            "blocked way",
+            "locked in",
+            "prevented from going",
+            "stopped me from leaving",
+            "kept inside",
+        ],
+    },
+    "property_damage": {
+        "label": "Property Damage / Mischief",
+        "keywords": [
+            "mischief",
+            "property damage",
+            "vandalism",
+            "damage property",
+            "damaged property",
+            "damaged my car",
+            "car windows",
+            "broke my car",
+            "destroyed property",
+            "tod phod",
         ],
     },
     "arrest_detention": {
@@ -143,10 +191,14 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
 
 PROPERTY_GROUP_MAP = {
     "fraud_offence": "cheating_fraud",
+    "violent_property_offence": "robbery_extortion",
     "threat_offence": "criminal_intimidation",
     "reputation_offence": "defamation",
     "harassment_offence": "harassment",
     "cyber_offence": "cybercrime",
+    "cyber_identity_offence": "cybercrime",
+    "property_damage_offence": "property_damage",
+    "restraint_offence": "restraint_confinement",
     "criminal_procedure": "arrest_detention",
 }
 
@@ -168,6 +220,21 @@ def detect_question_category(
             if normalize_text(keyword) in query:
                 scores[category_key] += 3
 
+    if ("threat" in query or "threatening" in query) and "money" in query:
+        scores["robbery_extortion"] += 6
+
+    if "demanded money" in query or "money demand" in query:
+        scores["robbery_extortion"] += 6
+
+    if "gunpoint" in query or "snatched at gunpoint" in query:
+        scores["robbery_extortion"] += 5
+
+    if "blocked my way" in query or "locked me in" in query or "kept inside" in query:
+        scores["restraint_confinement"] += 5
+
+    if ("damaged" in query or "damage" in query) and ("car" in query or "bike" in query or "property" in query):
+        scores["property_damage"] += 5
+
     for record in records or []:
         law_name = normalize_text(record.law_name)
         section_title = normalize_text(record.section_title)
@@ -186,17 +253,27 @@ def detect_question_category(
                 scores["criminal_intimidation"] += 3
             if "cheating" in section_title or "fraud" in tags or "breach of trust" in tags:
                 scores["cheating_fraud"] += 4
+            if "robbery" in section_title or "extortion" in tags or "mugging" in tags:
+                scores["robbery_extortion"] += 7
             if "trespass" in section_title or "trespass" in tags:
                 scores["trespass"] += 4
             if "harassment" in section_title or "modesty" in tags:
                 scores["harassment"] += 4
             if "trespass" in section_title or "land" in tags or "illegal entry" in tags:
                 scores["trespass"] += 5
+            if "restraint" in section_title or "confinement" in section_title or "blocked way" in tags:
+                scores["restraint_confinement"] += 5
+            if "mischief" in section_title or "property damage" in tags or "vandalism" in tags:
+                scores["property_damage"] += 5
 
         if "electronic crimes" in law_name:
             scores["cybercrime"] += 5
             if "stalking" in section_title or "harassment" in tags:
                 scores["harassment"] += 7
+            if "identity" in section_title or "forgery" in section_title or "electronic fraud" in section_title:
+                scores["cybercrime"] += 5
+            if ("damaged" in query or "damage" in query) and ("car" in query or "bike" in query or "property" in query):
+                scores["cybercrime"] -= 4
 
         if "criminal procedure" in law_name:
             scores["arrest_detention"] += 5

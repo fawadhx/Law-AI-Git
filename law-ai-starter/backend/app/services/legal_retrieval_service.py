@@ -143,6 +143,79 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "privacy intrusion",
         "eve teasing",
     ],
+    "extortion": [
+        "extortion",
+        "bhatta",
+        "ransom",
+        "money demand",
+        "fear of injury",
+        "demanded money",
+        "demanded money by threat",
+        "blackmail for money",
+    ],
+    "robbery": [
+        "robbery",
+        "mugging",
+        "armed snatching",
+        "snatching with force",
+        "gunpoint",
+        "violent theft",
+        "street robbery",
+        "snatched at gunpoint",
+        "snatched with force",
+    ],
+    "restraint": [
+        "wrongful restraint",
+        "blocked way",
+        "prevented from going",
+        "stopped me from leaving",
+        "obstructed",
+        "rasta rokna",
+    ],
+    "confinement": [
+        "wrongful confinement",
+        "locked in",
+        "kept inside",
+        "confined",
+        "locked me in a room",
+        "band kar diya",
+    ],
+    "mischief": [
+        "mischief",
+        "property damage",
+        "vandalism",
+        "damage property",
+        "damaged",
+        "broke",
+        "destroyed",
+        "car",
+        "vehicle",
+        "tod phod",
+    ],
+    "identity": [
+        "identity information",
+        "identity theft",
+        "cnic",
+        "impersonation",
+        "my identity",
+        "my documents",
+        "fake profile",
+    ],
+    "electronic_forgery": [
+        "electronic forgery",
+        "fake digital document",
+        "forged screenshot",
+        "fake pdf",
+        "edited digital evidence",
+    ],
+    "electronic_fraud": [
+        "electronic fraud",
+        "online scam",
+        "digital scam",
+        "banking scam",
+        "fake website",
+        "wrongful gain online",
+    ],
     "police": [
         "police",
         "officer",
@@ -168,6 +241,14 @@ PHRASE_HINTS: dict[str, list[str]] = {
     "land entry": ["trespass"],
     "sexual harassment": ["harassment", "modesty"],
     "cyber stalking": ["harassment", "online", "threat"],
+    "money through threats": ["extortion", "threat"],
+    "snatched at gunpoint": ["robbery", "theft", "threat"],
+    "blocked my way": ["restraint"],
+    "locked me inside": ["confinement"],
+    "damaged my property": ["mischief"],
+    "used my cnic": ["identity", "electronic_fraud"],
+    "fake digital document": ["electronic_forgery", "identity"],
+    "online scam": ["electronic_fraud", "online", "identity"],
 }
 
 
@@ -177,6 +258,14 @@ POLICE_HINTS = ["police", "arrest", "detain", "custody", "warrant"]
 PROPERTY_HINTS = ["property", "money", "land", "plot", "phone", "wallet", "entrusted"]
 FRAUD_HINTS = ["cheat", "cheating", "fraud", "scam", "deceive", "deceived", "420", "trust", "entrusted", "amanat", "khayanat"]
 TRESPASS_HINTS = ["trespass", "illegal entry", "unlawful entry", "plot", "entered", "enter", "land", "leave"]
+EXTORTION_HINTS = ["extortion", "bhatta", "ransom", "money demand", "demanded money", "demanded money by threat", "blackmail for money", "fear of injury"]
+ROBBERY_HINTS = ["robbery", "mugging", "gunpoint", "armed snatching", "snatching with force", "snatched at gunpoint", "violent theft"]
+RESTRAINT_HINTS = ["wrongful restraint", "blocked way", "obstruct", "rasta", "prevented from going", "stopped me"]
+CONFINEMENT_HINTS = ["wrongful confinement", "locked in", "kept inside", "confined", "locked room", "band"]
+MISCHIEF_HINTS = ["mischief", "vandalism", "property damage", "damaged", "broke", "destroyed", "damage car", "damage bike", "car windows", "vehicle damage"]
+IDENTITY_HINTS = ["identity", "identity theft", "cnic", "impersonation", "fake profile", "my documents"]
+ELECTRONIC_FRAUD_HINTS = ["electronic fraud", "online scam", "digital scam", "fake website", "banking scam", "otp"]
+ELECTRONIC_FORGERY_HINTS = ["electronic forgery", "fake screenshot", "forged pdf", "edited digital evidence", "fake digital document"]
 
 
 def normalize_text(value: str) -> str:
@@ -283,6 +372,14 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     property_requested = any(word in query_lower for word in PROPERTY_HINTS)
     fraud_requested = any(word in query_lower for word in FRAUD_HINTS)
     trespass_requested = any(word in query_lower for word in TRESPASS_HINTS)
+    extortion_requested = any(word in query_lower for word in EXTORTION_HINTS)
+    robbery_requested = any(word in query_lower for word in ROBBERY_HINTS)
+    restraint_requested = any(word in query_lower for word in RESTRAINT_HINTS)
+    confinement_requested = any(word in query_lower for word in CONFINEMENT_HINTS)
+    mischief_requested = any(word in query_lower for word in MISCHIEF_HINTS)
+    identity_requested = any(word in query_lower for word in IDENTITY_HINTS)
+    electronic_fraud_requested = any(word in query_lower for word in ELECTRONIC_FRAUD_HINTS)
+    electronic_forgery_requested = any(word in query_lower for word in ELECTRONIC_FORGERY_HINTS)
 
     if property_requested and record.offence_group == "property_offence":
         score += 2
@@ -293,17 +390,98 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if trespass_requested and (record.section_number in {"441", "447"} or record.offence_group == "property_offence"):
         score += 4
 
+    if extortion_requested and record.offence_group == "violent_property_offence":
+        score += 5
+
+    if robbery_requested and record.offence_group == "violent_property_offence":
+        score += 6
+
+    if restraint_requested and not police_requested and record.offence_group == "restraint_offence":
+        score += 5
+
+    if confinement_requested and not police_requested and record.offence_group == "restraint_offence":
+        score += 6
+
+    if mischief_requested and record.offence_group == "property_damage_offence":
+        score += 6
+
+    if identity_requested and record.offence_group == "cyber_identity_offence":
+        score += 6
+
+    if electronic_fraud_requested and record.section_number == "14":
+        score += 8
+    elif electronic_fraud_requested and record.offence_group == "cyber_identity_offence":
+        score += 5
+
+    if electronic_forgery_requested and record.section_number == "13":
+        score += 8
+    elif electronic_forgery_requested and record.offence_group == "cyber_identity_offence":
+        score += 5
+
     if "420" in query_lower and record.section_number == "420":
         score += 6
 
     if "509" in query_lower and record.section_number == "509":
         score += 6
 
-    if "cyber stalking" in query_lower and record.section_number == "24":
+    if "24" in query_lower and "cyber stalking" in query_lower and record.section_number == "24":
         score += 8
+    elif "cyber stalking" in query_lower and record.section_number == "24":
+        score += 8
+
+    if "16" in query_lower and "identity" in query_lower and record.section_number == "16":
+        score += 8
+
+    if "13" in query_lower and "forgery" in query_lower and record.section_number == "13":
+        score += 8
+
+    if "14" in query_lower and "fraud" in query_lower and record.section_number == "14":
+        score += 8
+
+    if "392" in query_lower and record.section_number == "392":
+        score += 8
+
+    if "384" in query_lower and record.section_number == "384":
+        score += 8
+
+    if "341" in query_lower and record.section_number == "341":
+        score += 7
+
+    if "342" in query_lower and record.section_number == "342":
+        score += 7
+
+    if "426" in query_lower and record.section_number == "426":
+        score += 7
+
+    if not online_requested and not identity_requested and record.offence_group == "cyber_identity_offence":
+        score -= 3
+
+    if restraint_requested and not robbery_requested and not extortion_requested and record.offence_group == "violent_property_offence":
+        score -= 3
+
+    if mischief_requested and record.offence_group == "cyber_identity_offence":
+        score -= 4
 
     if "without permission" in query_lower and record.section_number == "378":
         score += 5
+
+    if "gunpoint" in query_lower and record.section_number == "390":
+        score += 7
+
+    if "snatched" in query_lower and "gunpoint" in query_lower and record.section_number == "390":
+        score += 8
+
+    if "bhatta" in query_lower and record.section_number == "383":
+        score += 7
+
+    if "demanded money" in query_lower and record.section_number == "383":
+        score += 8
+
+    if "cnic" in query_lower and record.section_number == "16":
+        score += 8
+
+    if "car" in query_lower and "damaged" in query_lower and record.section_number == "425":
+        score += 7
 
     return score
 

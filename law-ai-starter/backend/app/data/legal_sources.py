@@ -462,4 +462,296 @@ LEGAL_SOURCES: list[LegalSourceRecord] = [
         offence_group="cyber_offence",
         provision_kind="offence",
     ),
+    LegalSourceRecord(
+        id="ppc-339",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="339",
+        section_title="Wrongful restraint",
+        summary=(
+            "This provision generally applies where a person is voluntarily obstructed "
+            "so that they cannot proceed in a direction in which they have a right to go."
+        ),
+        excerpt=(
+            "Whoever voluntarily obstructs any person so as to prevent that person from "
+            "proceeding in any direction in which that person has a right to proceed may "
+            "commit wrongful restraint."
+        ),
+        citation_label="PPC Section 339",
+        tags=["wrongful restraint", "blocked way", "obstruction", "forced stop"],
+        aliases=["rasta rokna", "prevented from going", "stopped me from leaving"],
+        keywords=["blocked path", "prevented movement", "cannot proceed"],
+        related_sections=["PPC Section 341", "PPC Section 340"],
+        offence_group="restraint_offence",
+        provision_kind="definition",
+    ),
+    LegalSourceRecord(
+        id="ppc-341",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="341",
+        section_title="Punishment for wrongful restraint",
+        summary=(
+            "This provision covers punishment that may apply where wrongful restraint is established."
+        ),
+        excerpt=(
+            "Whoever wrongfully restrains any person may be punished with simple imprisonment "
+            "for a term which may extend to one month, or with fine, or with both."
+        ),
+        citation_label="PPC Section 341",
+        tags=["wrongful restraint", "punishment", "simple imprisonment", "fine"],
+        aliases=["wrongful restraint punishment", "rasta rokna saza"],
+        keywords=["one month", "punishment for blocking way"],
+        related_sections=["PPC Section 339", "PPC Section 340"],
+        offence_group="restraint_offence",
+        punishment_summary="The punishment may extend to one month, fine, or both.",
+        provision_kind="punishment",
+    ),
+    LegalSourceRecord(
+        id="ppc-340",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="340",
+        section_title="Wrongful confinement",
+        summary=(
+            "This provision generally applies where a person is wrongfully restrained in a way "
+            "that prevents them from moving beyond certain limits."
+        ),
+        excerpt=(
+            "Whoever wrongfully restrains any person in such a manner as to prevent that person "
+            "from proceeding beyond certain circumscribing limits may commit wrongful confinement."
+        ),
+        citation_label="PPC Section 340",
+        tags=["wrongful confinement", "locked in", "detained privately", "kept inside"],
+        aliases=["band kar dena", "locked me in a room", "confined person"],
+        keywords=["prevented from leaving", "circumscribing limits", "kept inside premises"],
+        related_sections=["PPC Section 342", "PPC Section 339"],
+        offence_group="restraint_offence",
+        provision_kind="definition",
+    ),
+    LegalSourceRecord(
+        id="ppc-342",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="342",
+        section_title="Punishment for wrongful confinement",
+        summary=(
+            "This provision covers punishment that may apply where wrongful confinement is established."
+        ),
+        excerpt=(
+            "Whoever wrongfully confines any person may be punished with imprisonment "
+            "for a term which may extend to one year, or with fine, or with both."
+        ),
+        citation_label="PPC Section 342",
+        tags=["wrongful confinement", "punishment", "imprisonment", "fine"],
+        aliases=["wrongful confinement punishment", "band kar dena saza"],
+        keywords=["one year", "punishment for confinement"],
+        related_sections=["PPC Section 340", "PPC Section 339"],
+        offence_group="restraint_offence",
+        punishment_summary="The punishment may extend to one year, fine, or both.",
+        provision_kind="punishment",
+    ),
+    LegalSourceRecord(
+        id="ppc-383",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="383",
+        section_title="Extortion",
+        summary=(
+            "This provision generally applies where a person is intentionally put in fear of injury "
+            "and is thereby induced to deliver property, valuable security, or something convertible into value."
+        ),
+        excerpt=(
+            "Whoever intentionally puts any person in fear of injury and thereby dishonestly induces "
+            "that person to deliver property or valuable security may commit extortion."
+        ),
+        citation_label="PPC Section 383",
+        tags=["extortion", "fear of injury", "money demand", "property demand"],
+        aliases=["bhatta", "blackmail for money", "forced money demand"],
+        keywords=["demanding money through threats", "fear-based delivery of property", "ransom-like demand"],
+        related_sections=["PPC Section 384", "PPC Section 503"],
+        offence_group="violent_property_offence",
+        provision_kind="definition",
+    ),
+    LegalSourceRecord(
+        id="ppc-384",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="384",
+        section_title="Punishment for extortion",
+        summary=(
+            "This provision covers punishment that may apply where extortion is established."
+        ),
+        excerpt=(
+            "Whoever commits extortion may be punished with imprisonment "
+            "for a term which may extend to three years, or with fine, or with both."
+        ),
+        citation_label="PPC Section 384",
+        tags=["extortion", "punishment", "fine", "imprisonment"],
+        aliases=["extortion punishment", "bhatta saza"],
+        keywords=["three years", "punishment for extortion"],
+        related_sections=["PPC Section 383", "PPC Section 503"],
+        offence_group="violent_property_offence",
+        punishment_summary="The punishment may extend to three years, fine, or both.",
+        provision_kind="punishment",
+    ),
+    LegalSourceRecord(
+        id="ppc-390",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="390",
+        section_title="Robbery",
+        summary=(
+            "This provision generally applies when theft or extortion is accompanied by immediate violence, "
+            "attempted violence, or fear of instant death, hurt, or wrongful restraint."
+        ),
+        excerpt=(
+            "Theft becomes robbery where violence, attempted violence, or fear of instant hurt, death, "
+            "or wrongful restraint is used in committing the taking; extortion may also become robbery "
+            "where delivery is induced by fear of instant injury in the person's presence."
+        ),
+        citation_label="PPC Section 390",
+        tags=["robbery", "snatching with force", "violent theft", "mugging"],
+        aliases=["mugging", "armed snatching", "street robbery", "dacoity-like robbery"],
+        keywords=["force during theft", "fear of instant hurt", "snatched at gunpoint"],
+        related_sections=["PPC Section 392", "PPC Section 378", "PPC Section 383"],
+        offence_group="violent_property_offence",
+        provision_kind="definition",
+    ),
+    LegalSourceRecord(
+        id="ppc-392",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="392",
+        section_title="Punishment for robbery",
+        summary=(
+            "This provision covers punishment that may apply where robbery is established."
+        ),
+        excerpt=(
+            "Whoever commits robbery may be punished with rigorous imprisonment for a term "
+            "that may extend from three to ten years, and shall also be liable to fine."
+        ),
+        citation_label="PPC Section 392",
+        tags=["robbery", "punishment", "rigorous imprisonment", "fine"],
+        aliases=["robbery punishment", "snatching punishment", "mugging punishment"],
+        keywords=["three to ten years", "punishment for robbery"],
+        related_sections=["PPC Section 390", "PPC Section 378", "PPC Section 383"],
+        offence_group="violent_property_offence",
+        punishment_summary="The punishment may range from three to ten years and fine.",
+        provision_kind="punishment",
+    ),
+    LegalSourceRecord(
+        id="ppc-425",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="425",
+        section_title="Mischief",
+        summary=(
+            "This provision generally applies where a person causes destruction of property or "
+            "changes it in a way that diminishes its value, utility, or causes wrongful loss or damage."
+        ),
+        excerpt=(
+            "Whoever with intent to cause, or knowing that it is likely to cause, wrongful loss or damage "
+            "to the public or to any person causes destruction of property or a change that diminishes "
+            "its value or utility may commit mischief."
+        ),
+        citation_label="PPC Section 425",
+        tags=["mischief", "property damage", "vandalism", "destruction"],
+        aliases=["tod phod", "damage property", "vandalism"],
+        keywords=["damaged property", "broke vehicle", "destroyed object"],
+        related_sections=["PPC Section 426"],
+        offence_group="property_damage_offence",
+        provision_kind="definition",
+    ),
+    LegalSourceRecord(
+        id="ppc-426",
+        source_title="Pakistan Penal Code, 1860",
+        law_name="Pakistan Penal Code",
+        section_number="426",
+        section_title="Punishment for mischief",
+        summary=(
+            "This provision covers punishment that may apply where mischief is established."
+        ),
+        excerpt=(
+            "Whoever commits mischief may be punished with imprisonment "
+            "for a term which may extend to three months, or with fine, or with both."
+        ),
+        citation_label="PPC Section 426",
+        tags=["mischief", "punishment", "property damage", "fine"],
+        aliases=["mischief punishment", "vandalism punishment"],
+        keywords=["three months", "punishment for property damage"],
+        related_sections=["PPC Section 425"],
+        offence_group="property_damage_offence",
+        punishment_summary="The punishment may extend to three months, fine, or both.",
+        provision_kind="punishment",
+    ),
+    LegalSourceRecord(
+        id="pca-13",
+        source_title="Prevention of Electronic Crimes Act, 2016",
+        law_name="Prevention of Electronic Crimes Act",
+        section_number="13",
+        section_title="Electronic forgery",
+        summary=(
+            "This provision may apply where digital systems or data are manipulated to create unauthentic "
+            "data intended to be acted on as authentic for legal or fraudulent purposes."
+        ),
+        excerpt=(
+            "Whoever uses or interferes with an information system, device, or data to create "
+            "unauthentic data intended to be considered or acted upon as authentic may commit electronic forgery."
+        ),
+        citation_label="PECA Section 13",
+        tags=["electronic forgery", "fake digital document", "forged data", "cyber forgery"],
+        aliases=["fake screenshot", "fake digital record", "forged online document"],
+        keywords=["forged pdf", "edited digital evidence", "fake digital document"],
+        related_sections=["PECA Section 14", "PECA Section 16"],
+        offence_group="cyber_identity_offence",
+        punishment_summary="The punishment may extend to three years, fine, or both.",
+        provision_kind="offence",
+    ),
+    LegalSourceRecord(
+        id="pca-14",
+        source_title="Prevention of Electronic Crimes Act, 2016",
+        law_name="Prevention of Electronic Crimes Act",
+        section_number="14",
+        section_title="Electronic fraud",
+        summary=(
+            "This provision may apply where a person uses an information system, device, or data "
+            "for wrongful gain, deception, or inducing another person into a harmful relationship or transaction."
+        ),
+        excerpt=(
+            "Whoever with intent for wrongful gain uses an information system, device, or data or deceives any person "
+            "through such means in a way likely to cause harm may commit electronic fraud."
+        ),
+        citation_label="PECA Section 14",
+        tags=["electronic fraud", "online scam", "digital deception", "cyber fraud"],
+        aliases=["online fraud", "fake website scam", "banking scam"],
+        keywords=["fraudulent website", "digital scam", "wrongful gain online"],
+        related_sections=["PECA Section 13", "PECA Section 16", "PPC Section 420"],
+        offence_group="cyber_identity_offence",
+        punishment_summary="The punishment may extend to two years, fine, or both.",
+        provision_kind="offence",
+    ),
+    LegalSourceRecord(
+        id="pca-16",
+        source_title="Prevention of Electronic Crimes Act, 2016",
+        law_name="Prevention of Electronic Crimes Act",
+        section_number="16",
+        section_title="Unauthorized use of identity information",
+        summary=(
+            "This provision may apply where another person's identity information is obtained, sold, "
+            "possessed, transmitted, or used without authorization."
+        ),
+        excerpt=(
+            "Whoever obtains, sells, possesses, transmits, or uses another person's identity information "
+            "without authorization may commit an offence under this section."
+        ),
+        citation_label="PECA Section 16",
+        tags=["identity information", "identity theft", "cnic misuse", "impersonation"],
+        aliases=["identity theft", "cnic used", "fake profile using my identity"],
+        keywords=["unauthorized identity use", "my cnic", "my documents used"],
+        related_sections=["PECA Section 13", "PECA Section 14", "PECA Section 20"],
+        offence_group="cyber_identity_offence",
+        punishment_summary="The punishment may extend to three years or fine up to five million rupees, or both.",
+        provision_kind="offence",
+    ),
 ]
