@@ -194,6 +194,77 @@ type AdminSourcePublishPreviewResponse = {
   workflow_note: string;
 };
 
+type AdminWorkspaceDraftRecord = {
+  workspace_draft_id: string;
+  title: string;
+  citation_label: string;
+  law_name: string;
+  section_number: string;
+  publish_mode: string;
+  source_record_id: string | null;
+  version: number;
+  readiness_score: number;
+  review_status: string;
+  publish_status: string;
+  blocker_count: number;
+  warning_count: number;
+  changed_field_count: number;
+  saved_at: string;
+};
+
+type AdminWorkspaceDraftDetailResponse = {
+  workspace_draft: AdminWorkspaceDraftRecord;
+  payload: {
+    id?: string | null;
+    source_title: string;
+    law_name: string;
+    section_number: string;
+    section_title: string;
+    summary: string;
+    excerpt: string;
+    citation_label: string;
+    jurisdiction: string;
+    provision_kind: string;
+    offence_group?: string | null;
+    punishment_summary?: string | null;
+    tags: string[];
+    aliases: string[];
+    keywords: string[];
+    related_sections: string[];
+  };
+  validation: AdminSourceDraftValidationResponse;
+  review: AdminSourceDraftReviewResponse;
+  publish_preview: AdminSourcePublishPreviewResponse;
+  workflow_note: string;
+};
+
+type AdminPublishQueueRecord = {
+  package_id: string;
+  workspace_draft_id: string | null;
+  title: string;
+  citation_label: string;
+  publish_mode: string;
+  target_record_id: string | null;
+  review_status: string;
+  publish_status: string;
+  blocker_count: number;
+  warning_count: number;
+  changed_field_count: number;
+  staged_at: string;
+  summary_line: string;
+};
+
+type AdminWorkspaceResponse = {
+  saved_draft_count: number;
+  staged_publish_count: number;
+  ready_draft_count: number;
+  blocked_item_count: number;
+  drafts: AdminWorkspaceDraftRecord[];
+  publish_queue: AdminPublishQueueRecord[];
+  workflow_note: string;
+};
+
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -349,6 +420,29 @@ function detailToDraft(detail: AdminSourceDetailResponse): AdminDraftForm {
   };
 }
 
+
+
+function payloadToDraftForm(payload: AdminWorkspaceDraftDetailResponse["payload"]): AdminDraftForm {
+  return {
+    id: payload.id || "",
+    source_title: payload.source_title,
+    law_name: payload.law_name,
+    section_number: payload.section_number,
+    section_title: payload.section_title,
+    summary: payload.summary,
+    excerpt: payload.excerpt,
+    citation_label: payload.citation_label,
+    jurisdiction: payload.jurisdiction,
+    provision_kind: payload.provision_kind,
+    offence_group: payload.offence_group || "",
+    punishment_summary: payload.punishment_summary || "",
+    tags_text: listToText(payload.tags),
+    aliases_text: listToText(payload.aliases),
+    keywords_text: listToText(payload.keywords),
+    related_sections_text: listToText(payload.related_sections),
+  };
+}
+
 function detailListCard(
   title: string,
   description: string,
@@ -385,6 +479,34 @@ export default function AdminPage() {
   const [publishLoading, setPublishLoading] = useState(false);
   const [publishError, setPublishError] = useState("");
   const [publishPreview, setPublishPreview] = useState<AdminSourcePublishPreviewResponse | null>(null);
+  const [workspace, setWorkspace] = useState<AdminWorkspaceResponse | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const [workspaceError, setWorkspaceError] = useState("");
+  const [workspaceDraftId, setWorkspaceDraftId] = useState("");
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [workspaceActionError, setWorkspaceActionError] = useState("");
+
+  async function loadWorkspace() {
+    try {
+      setWorkspaceLoading(true);
+      setWorkspaceError("");
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`Workspace request failed with status ${response.status}`);
+      }
+      const result: AdminWorkspaceResponse = await response.json();
+      setWorkspace(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceError(err.message || "Failed to load workspace shelf.");
+      }
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -437,6 +559,10 @@ export default function AdminPage() {
     loadAdminWorkspace();
 
     return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    loadWorkspace();
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -529,6 +655,8 @@ export default function AdminPage() {
       return;
     }
 
+    setWorkspaceDraftId("");
+    setWorkspaceDraftId("");
     setDraftForm(detailToDraft(detail));
     setDraftValidation(null);
     setDraftError("");
@@ -634,6 +762,163 @@ export default function AdminPage() {
     }
   }
 
+
+  async function saveDraftToWorkspace() {
+    if (!draftForm) {
+      return;
+    }
+
+    try {
+      setWorkspaceBusy(true);
+      setWorkspaceActionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_draft_id: workspaceDraftId || undefined,
+          draft: draftFormToPayload(draftForm),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Workspace draft save failed with status ${response.status}`);
+      }
+
+      const result: AdminWorkspaceDraftDetailResponse = await response.json();
+      setWorkspaceDraftId(result.workspace_draft.workspace_draft_id);
+      setDraftForm(payloadToDraftForm(result.payload));
+      setDraftValidation(result.validation);
+      setDraftReview(result.review);
+      setPublishPreview(result.publish_preview);
+      await loadWorkspace();
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceActionError(err.message || "Failed to save workspace draft.");
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function loadWorkspaceDraft(workspaceId: string) {
+    try {
+      setWorkspaceBusy(true);
+      setWorkspaceActionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/${workspaceId}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Workspace draft load failed with status ${response.status}`);
+      }
+
+      const result: AdminWorkspaceDraftDetailResponse = await response.json();
+      setWorkspaceDraftId(result.workspace_draft.workspace_draft_id);
+      setDraftForm(payloadToDraftForm(result.payload));
+      setDraftValidation(result.validation);
+      setDraftReview(result.review);
+      setPublishPreview(result.publish_preview);
+      setDraftError("");
+      setReviewError("");
+      setPublishError("");
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceActionError(err.message || "Failed to load workspace draft.");
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function stagePublishPackage() {
+    if (!draftForm) {
+      return;
+    }
+
+    try {
+      setWorkspaceBusy(true);
+      setWorkspaceActionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/publish-packages/stage`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workspace_draft_id: workspaceDraftId || undefined,
+          draft: draftFormToPayload(draftForm),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Publish package staging failed with status ${response.status}`);
+      }
+
+      await response.json();
+      await loadWorkspace();
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceActionError(err.message || "Failed to stage publish package.");
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function deleteWorkspaceDraft(workspaceId: string) {
+    try {
+      setWorkspaceBusy(true);
+      setWorkspaceActionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/${workspaceId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Workspace draft delete failed with status ${response.status}`);
+      }
+
+      if (workspaceDraftId === workspaceId) {
+        setWorkspaceDraftId("");
+      }
+      await loadWorkspace();
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceActionError(err.message || "Failed to delete workspace draft.");
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function deletePublishPackage(packageId: string) {
+    try {
+      setWorkspaceBusy(true);
+      setWorkspaceActionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/publish-packages/${packageId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Publish package delete failed with status ${response.status}`);
+      }
+
+      await loadWorkspace();
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceActionError(err.message || "Failed to delete publish package.");
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
   function updateDraftField(field: keyof AdminDraftForm, value: string) {
     setDraftForm((current) => (current ? { ...current, [field]: value } : current));
     setDraftValidation(null);
@@ -642,6 +927,7 @@ export default function AdminPage() {
     setDraftError("");
     setReviewError("");
     setPublishError("");
+    setWorkspaceActionError("");
   }
 
   function resetDraftFromSelected() {
@@ -658,6 +944,7 @@ export default function AdminPage() {
   }
 
   function startBlankDraft() {
+    setWorkspaceDraftId("");
     setDraftForm({
       id: "",
       source_title: "",
@@ -682,6 +969,7 @@ export default function AdminPage() {
     setReviewError("");
     setPublishPreview(null);
     setPublishError("");
+    setWorkspaceActionError("");
   }
 
   const filteredPunishmentCount = filteredItems.filter(
@@ -1538,6 +1826,126 @@ export default function AdminPage() {
             </section>
 
             <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
+              <div style={{ ...badge(), marginBottom: "12px" }}>Phase 4 workspace shelf</div>
+              <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
+                Saved drafts + staged publish packages
+              </div>
+
+              {workspaceLoading ? (
+                <div style={softCardStyle}>Loading workspace shelf...</div>
+              ) : workspaceError ? (
+                <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                  Failed to load workspace shelf: {workspaceError}
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "18px" }}>
+                  {workspaceActionError && (
+                    <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                      Workspace action failed: {workspaceActionError}
+                    </div>
+                  )}
+
+                  {workspace && (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px" }}>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Saved drafts</div>
+                          <div style={{ fontSize: "28px", fontWeight: 800 }}>{workspace.saved_draft_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Staged packages</div>
+                          <div style={{ fontSize: "28px", fontWeight: 800 }}>{workspace.staged_publish_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Ready drafts</div>
+                          <div style={{ fontSize: "28px", fontWeight: 800 }}>{workspace.ready_draft_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Blocked items</div>
+                          <div style={{ fontSize: "28px", fontWeight: 800 }}>{workspace.blocked_item_count}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{workspace.workflow_note}</div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "18px", alignItems: "start" }}>
+                        <div style={{ ...softCardStyle, display: "grid", gap: "12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                            <div style={{ ...badge("green") }}>Saved drafts</div>
+                            {workspaceBusy && <div style={{ color: "#aac0ff", fontSize: "13px" }}>Updating workspace…</div>}
+                          </div>
+                          {workspace.drafts.length === 0 ? (
+                            <div style={{ color: "#c6d3f3", lineHeight: 1.65 }}>
+                              No workspace drafts saved yet. Save the current draft to keep a reusable snapshot before real persistence exists.
+                            </div>
+                          ) : (
+                            workspace.drafts.map((item) => (
+                              <div key={item.workspace_draft_id} style={{ ...softCardStyle, padding: "14px", border: item.workspace_draft_id === workspaceDraftId ? "1px solid rgba(126, 162, 255, 0.32)" : undefined }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", marginBottom: "8px" }}>
+                                  <div style={{ color: "#ffffff", fontWeight: 700 }}>{item.title}</div>
+                                  <div style={badge(toneFromStatus(item.review_status))}>{prettyKind(item.review_status)}</div>
+                                </div>
+                                <div style={{ color: "#aac0ff", fontSize: "13px", marginBottom: "8px" }}>
+                                  {item.citation_label || `${item.law_name} • Section ${item.section_number}`} • v{item.version}
+                                </div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                                  <span style={chipStyle}>Score {item.readiness_score}</span>
+                                  <span style={chipStyle}>{item.changed_field_count} changed</span>
+                                  <span style={chipStyle}>{item.warning_count} warnings</span>
+                                  <span style={chipStyle}>{item.blocker_count} blockers</span>
+                                </div>
+                                <div style={{ color: "#c6d3f3", fontSize: "13px", marginBottom: "10px" }}>Saved {item.saved_at}</div>
+                                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                                  <button type="button" onClick={() => loadWorkspaceDraft(item.workspace_draft_id)} style={secondaryButton}>
+                                    Load draft
+                                  </button>
+                                  <button type="button" onClick={() => deleteWorkspaceDraft(item.workspace_draft_id)} style={secondaryButton}>
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <div style={{ ...softCardStyle, display: "grid", gap: "12px" }}>
+                          <div style={{ ...badge() }}>Staged publish packages</div>
+                          {workspace.publish_queue.length === 0 ? (
+                            <div style={{ color: "#c6d3f3", lineHeight: 1.65 }}>
+                              No publish packages are staged yet. Save or review a draft, then stage a publish package to create a handoff artifact for later real approval workflows.
+                            </div>
+                          ) : (
+                            workspace.publish_queue.map((item) => (
+                              <div key={item.package_id} style={{ ...softCardStyle, padding: "14px" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", marginBottom: "8px" }}>
+                                  <div style={{ color: "#ffffff", fontWeight: 700 }}>{item.title}</div>
+                                  <div style={badge(toneFromStatus(item.publish_status))}>{prettyKind(item.publish_status)}</div>
+                                </div>
+                                <div style={{ color: "#aac0ff", fontSize: "13px", marginBottom: "8px" }}>
+                                  {item.citation_label || "Draft package"} • {prettyKind(item.publish_mode)}
+                                </div>
+                                <div style={{ color: "#dbe4ff", lineHeight: 1.65, marginBottom: "10px" }}>{item.summary_line}</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                                  <span style={chipStyle}>{item.changed_field_count} changed</span>
+                                  <span style={chipStyle}>{item.warning_count} warnings</span>
+                                  <span style={chipStyle}>{item.blocker_count} blockers</span>
+                                </div>
+                                <div style={{ color: "#c6d3f3", fontSize: "13px", marginBottom: "10px" }}>Staged {item.staged_at}</div>
+                                <button type="button" onClick={() => deletePublishPackage(item.package_id)} style={secondaryButton}>
+                                  Remove package
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
               <div style={{ ...badge("green"), marginBottom: "12px" }}>Phase 4 draft workflow</div>
               <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
 Working draft editor + review gate + publish preview
@@ -1553,8 +1961,10 @@ Working draft editor + review gate + publish preview
               >
                 <div style={{ ...softCardStyle, display: "grid", gap: "14px" }}>
                   <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>
-                    Edit a working draft safely, validate it, run a review gate, and build a publish preview. This still does not save changes into the live legal catalog yet.
+                    Edit a working draft safely, validate it, run a review gate, build a publish preview, and now save reusable workspace snapshots or stage publish packages. The live legal catalog still remains unchanged.
                   </div>
+
+                  {workspaceDraftId && <div style={{ ...badge("green"), width: "fit-content" }}>Active workspace draft</div>}
 
                   <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                     <button type="button" onClick={validateDraft} style={secondaryButton} disabled={!draftForm || draftLoading}>
@@ -1565,6 +1975,12 @@ Working draft editor + review gate + publish preview
                     </button>
                     <button type="button" onClick={buildPublishPreview} style={secondaryButton} disabled={!draftForm || publishLoading}>
                       {publishLoading ? "Building..." : "Build publish preview"}
+                    </button>
+                    <button type="button" onClick={saveDraftToWorkspace} style={secondaryButton} disabled={!draftForm || workspaceBusy}>
+                      {workspaceBusy ? "Working..." : workspaceDraftId ? "Update workspace draft" : "Save to workspace"}
+                    </button>
+                    <button type="button" onClick={stagePublishPackage} style={secondaryButton} disabled={!draftForm || workspaceBusy}>
+                      {workspaceBusy ? "Working..." : "Stage publish package"}
                     </button>
                     <button type="button" onClick={resetDraftFromSelected} style={secondaryButton} disabled={!detail}>
                       Reset from selected

@@ -145,7 +145,6 @@ class AdminSourceDraftValidationResponse(BaseModel):
     workflow_note: str
 
 
-
 class AdminDraftFieldChange(BaseModel):
     field: str
     label: str
@@ -188,4 +187,68 @@ class AdminSourcePublishPreviewResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     recommended_actions: list[str] = Field(default_factory=list)
     changed_fields: list[AdminDraftFieldChange] = Field(default_factory=list)
+    workflow_note: str
+
+
+class AdminWorkspaceDraftSaveRequest(BaseModel):
+    workspace_draft_id: str | None = None
+    label: str | None = None
+    draft: AdminSourceDraftInput
+
+
+class AdminWorkspaceStageRequest(BaseModel):
+    workspace_draft_id: str | None = None
+    draft: AdminSourceDraftInput
+
+
+class AdminWorkspaceDraftRecord(BaseModel):
+    workspace_draft_id: str
+    title: str
+    citation_label: str
+    law_name: str
+    section_number: str
+    publish_mode: str
+    source_record_id: str | None = None
+    version: int = 1
+    readiness_score: int
+    review_status: str
+    publish_status: str
+    blocker_count: int
+    warning_count: int
+    changed_field_count: int
+    saved_at: str
+
+
+class AdminWorkspaceDraftDetailResponse(BaseModel):
+    workspace_draft: AdminWorkspaceDraftRecord
+    payload: AdminSourceDraftInput
+    validation: AdminSourceDraftValidationResponse
+    review: AdminSourceDraftReviewResponse
+    publish_preview: AdminSourcePublishPreviewResponse
+    workflow_note: str
+
+
+class AdminPublishQueueRecord(BaseModel):
+    package_id: str
+    workspace_draft_id: str | None = None
+    title: str
+    citation_label: str
+    publish_mode: str
+    target_record_id: str | None = None
+    review_status: str
+    publish_status: str
+    blocker_count: int
+    warning_count: int
+    changed_field_count: int
+    staged_at: str
+    summary_line: str
+
+
+class AdminWorkspaceResponse(BaseModel):
+    saved_draft_count: int
+    staged_publish_count: int
+    ready_draft_count: int
+    blocked_item_count: int
+    drafts: list[AdminWorkspaceDraftRecord] = Field(default_factory=list)
+    publish_queue: list[AdminPublishQueueRecord] = Field(default_factory=list)
     workflow_note: str

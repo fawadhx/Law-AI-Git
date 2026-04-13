@@ -379,7 +379,7 @@ def get_admin_summary() -> AdminSummaryResponse:
                 title="Source catalog status",
                 content=(
                     f"The admin panel is now connected to a live prototype catalog of {total_records} in-memory legal records. "
-                    "Record inspection and draft validation are available, but editing persistence, approvals, and uploads are still planned rather than implemented."
+                    "Record inspection, draft validation, and an in-memory workspace shelf are available, but real persistence, approvals, and uploads are still planned rather than implemented."
                 ),
             ),
             AdminStatusCard(
@@ -392,7 +392,7 @@ def get_admin_summary() -> AdminSummaryResponse:
         ],
         workflow_steps=[
             "Review section wording, excerpt quality, and linked sections before treating a record as production-ready.",
-            "Validate a working draft to catch missing metadata, weak summaries, or broken section pairings early.",
+            "Validate a working draft, then save it into the in-memory workspace shelf before moving it toward publish review.",
             "Verify that offence, punishment, and procedure sections are paired correctly for answer composition.",
             "Prepare future source editing, publishing, and audit-log controls before any real admin rollout.",
         ],
@@ -807,3 +807,207 @@ def build_admin_source_publish_preview(payload: AdminSourceDraftInput) -> AdminS
             "This publish preview does not mutate the live catalog. It estimates how the draft would land inside the current prototype source library so an admin can review impact, context, and remaining risks before real persistence exists."
         ),
     )
+
+
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from app.schemas.admin import (
+    AdminPublishQueueRecord,
+    AdminWorkspaceDraftDetailResponse,
+    AdminWorkspaceDraftRecord,
+    AdminWorkspaceDraftSaveRequest,
+    AdminWorkspaceResponse,
+    AdminWorkspaceStageRequest,
+)
+
+WORKSPACE_DRAFT_STORE: dict[str, dict] = {}
+PUBLISH_PACKAGE_STORE: dict[str, dict] = {}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _title_from_draft(payload: AdminSourceDraftInput, explicit_label: str | None = None) -> str:
+    if explicit_label and explicit_label.strip():
+        return explicit_label.strip()
+    if payload.citation_label:
+        return payload.citation_label
+    if payload.law_name and payload.section_number:
+        return f"{payload.law_name} s. {payload.section_number}"
+    if payload.section_title:
+        return payload.section_title
+    return "Untitled workspace draft"
+
+
+def _build_workspace_draft_record(
+    *,
+    workspace_draft_id: str,
+    title: str,
+    payload: AdminSourceDraftInput,
+    validation: AdminSourceDraftValidationResponse,
+    review: AdminSourceDraftReviewResponse,
+    publish_preview: AdminSourcePublishPreviewResponse,
+    version: int,
+    saved_at: str,
+) -> AdminWorkspaceDraftRecord:
+    return AdminWorkspaceDraftRecord(
+        workspace_draft_id=workspace_draft_id,
+        title=title,
+        citation_label=validation.preview.citation_label,
+        law_name=validation.preview.law_name,
+        section_number=validation.preview.section_number,
+        publish_mode=review.publish_mode,
+        source_record_id=payload.id,
+        version=version,
+        readiness_score=review.readiness_score,
+        review_status=review.review_status,
+        publish_status=publish_preview.publish_status,
+        blocker_count=review.blocker_count,
+        warning_count=review.warning_count,
+        changed_field_count=review.changed_field_count,
+        saved_at=saved_at,
+    )
+
+
+def _workspace_detail_response(entry: dict) -> AdminWorkspaceDraftDetailResponse:
+    return AdminWorkspaceDraftDetailResponse(
+        workspace_draft=entry["workspace_draft"],
+        payload=entry["payload"],
+        validation=entry["validation"],
+        review=entry["review"],
+        publish_preview=entry["publish_preview"],
+        workflow_note=(
+            "Workspace drafts are stored only in prototype server memory for this session. "
+            "They let you save draft snapshots, reopen them, and prepare staged publish packages without mutating the live catalog."
+        ),
+    )
+
+
+def _sorted_workspace_drafts() -> list[AdminWorkspaceDraftRecord]:
+    items = [entry["workspace_draft"] for entry in WORKSPACE_DRAFT_STORE.values()]
+    return sorted(items, key=lambda item: item.saved_at, reverse=True)
+
+
+def _sorted_publish_packages() -> list[AdminPublishQueueRecord]:
+    items = [entry["publish_package"] for entry in PUBLISH_PACKAGE_STORE.values()]
+    return sorted(items, key=lambda item: item.staged_at, reverse=True)
+
+
+def get_admin_workspace() -> AdminWorkspaceResponse:
+    drafts = _sorted_workspace_drafts()
+    publish_queue = _sorted_publish_packages()
+    ready_draft_count = sum(1 for item in drafts if item.review_status == "ready")
+    blocked_item_count = sum(1 for item in drafts if item.review_status == "blocked") + sum(
+        1 for item in publish_queue if item.publish_status == "blocked"
+    )
+    return AdminWorkspaceResponse(
+        saved_draft_count=len(drafts),
+        staged_publish_count=len(publish_queue),
+        ready_draft_count=ready_draft_count,
+        blocked_item_count=blocked_item_count,
+        drafts=drafts,
+        publish_queue=publish_queue,
+        workflow_note=(
+            "This workspace shelf is still prototype-only and resets when the server restarts. "
+            "Use it to save draft snapshots, reopen them for editing, and stage publish packages for review before real persistence exists."
+        ),
+    )
+
+
+def save_admin_workspace_draft(request: AdminWorkspaceDraftSaveRequest) -> AdminWorkspaceDraftDetailResponse:
+    normalized = _normalize_draft(request.draft)
+    validation = validate_admin_source_draft(normalized)
+    review = review_admin_source_draft(normalized)
+    publish_preview = build_admin_source_publish_preview(normalized)
+
+    workspace_draft_id = request.workspace_draft_id or str(uuid4())
+    existing_entry = WORKSPACE_DRAFT_STORE.get(workspace_draft_id)
+    version = (existing_entry["workspace_draft"].version + 1) if existing_entry else 1
+    saved_at = _utc_now_iso()
+    title = _title_from_draft(normalized, request.label)
+
+    record = _build_workspace_draft_record(
+        workspace_draft_id=workspace_draft_id,
+        title=title,
+        payload=normalized,
+        validation=validation,
+        review=review,
+        publish_preview=publish_preview,
+        version=version,
+        saved_at=saved_at,
+    )
+    WORKSPACE_DRAFT_STORE[workspace_draft_id] = {
+        "workspace_draft": record,
+        "payload": normalized,
+        "validation": validation,
+        "review": review,
+        "publish_preview": publish_preview,
+    }
+    return _workspace_detail_response(WORKSPACE_DRAFT_STORE[workspace_draft_id])
+
+
+def get_admin_workspace_draft(workspace_draft_id: str) -> AdminWorkspaceDraftDetailResponse | None:
+    entry = WORKSPACE_DRAFT_STORE.get(workspace_draft_id)
+    if entry is None:
+        return None
+    return _workspace_detail_response(entry)
+
+
+def delete_admin_workspace_draft(workspace_draft_id: str) -> bool:
+    if workspace_draft_id not in WORKSPACE_DRAFT_STORE:
+        return False
+    del WORKSPACE_DRAFT_STORE[workspace_draft_id]
+    orphaned_package_ids = [
+        package_id
+        for package_id, entry in PUBLISH_PACKAGE_STORE.items()
+        if entry["publish_package"].workspace_draft_id == workspace_draft_id
+    ]
+    for package_id in orphaned_package_ids:
+        del PUBLISH_PACKAGE_STORE[package_id]
+    return True
+
+
+def build_admin_workspace_publish_package(request: AdminWorkspaceStageRequest) -> AdminPublishQueueRecord:
+    normalized = _normalize_draft(request.draft)
+    review = review_admin_source_draft(normalized)
+    publish_preview = build_admin_source_publish_preview(normalized)
+    validation = validate_admin_source_draft(normalized)
+
+    workspace_draft_id = request.workspace_draft_id
+    linked_entry = WORKSPACE_DRAFT_STORE.get(workspace_draft_id) if workspace_draft_id else None
+    title = linked_entry["workspace_draft"].title if linked_entry else _title_from_draft(normalized)
+
+    package = AdminPublishQueueRecord(
+        package_id=str(uuid4()),
+        workspace_draft_id=workspace_draft_id,
+        title=title,
+        citation_label=validation.preview.citation_label,
+        publish_mode=publish_preview.publish_mode,
+        target_record_id=publish_preview.target_record_id,
+        review_status=review.review_status,
+        publish_status=publish_preview.publish_status,
+        blocker_count=review.blocker_count,
+        warning_count=review.warning_count,
+        changed_field_count=publish_preview.changed_field_count,
+        staged_at=_utc_now_iso(),
+        summary_line=(
+            f"{publish_preview.publish_mode.replace('_', ' ')} package for {validation.preview.citation_label or title}. "
+            f"{review.blocker_count} blocker(s), {review.warning_count} warning(s), {publish_preview.changed_field_count} changed field(s)."
+        ),
+    )
+    PUBLISH_PACKAGE_STORE[package.package_id] = {
+        "publish_package": package,
+        "payload": normalized,
+        "review": review,
+        "publish_preview": publish_preview,
+    }
+    return package
+
+
+def delete_admin_workspace_publish_package(package_id: str) -> bool:
+    if package_id not in PUBLISH_PACKAGE_STORE:
+        return False
+    del PUBLISH_PACKAGE_STORE[package_id]
+    return True
