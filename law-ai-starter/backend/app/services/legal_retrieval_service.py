@@ -2,19 +2,33 @@
 import re
 
 from app.schemas.legal_source import LegalSourceRecord
-from app.services.legal_source_store import get_active_legal_source_records, get_legal_source_store_status
+from app.services.legal_source_store import (
+    get_active_legal_source_records,
+    get_legal_source_store_diagnostics,
+    get_record_searchable_text,
+)
 
 
 def get_retrieval_source_status() -> dict[str, object]:
-    status = get_legal_source_store_status()
+    diagnostics = get_legal_source_store_diagnostics()
     return {
-        "active_source": status.active_source,
-        "source_label": status.source_label,
-        "database_ready": status.database_ready,
-        "foundation_stage": status.foundation_stage,
-        "active_record_count": status.active_record_count,
-        "persisted_record_count": status.persisted_record_count,
-        "detail": status.detail,
+        "active_source": diagnostics["active_source"],
+        "source_label": diagnostics["source_label"],
+        "database_ready": diagnostics["database_ready"],
+        "foundation_stage": diagnostics["foundation_stage"],
+        "active_record_count": diagnostics["active_record_count"],
+        "persisted_record_count": diagnostics["persisted_record_count"],
+        "detail": diagnostics["detail"],
+        "retrieval_profile": diagnostics["retrieval_profile"],
+        "retrieval_profile_label": diagnostics["retrieval_profile_label"],
+        "vector_stage": diagnostics["vector_stage"],
+        "vector_readiness_label": diagnostics["vector_readiness_label"],
+        "embedding_ready_records": diagnostics["embedding_ready_records"],
+        "embedding_pending_records": diagnostics["embedding_pending_records"],
+        "embedding_coverage_percent": diagnostics["embedding_coverage_percent"],
+        "embedding_model": diagnostics["embedding_model"],
+        "embedding_dimensions": diagnostics["embedding_dimensions"],
+        "vector_search_enabled": diagnostics["vector_search_enabled"],
     }
 
 CONCEPT_SYNONYMS: dict[str, list[str]] = {
@@ -638,7 +652,7 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     signals = build_query_signals(query)
     intent = build_query_intent(query)
 
-    searchable_text = normalize_text(" ".join(record.searchable_parts))
+    searchable_text = normalize_text(get_record_searchable_text(record))
     searchable_tokens = set(tokenize(searchable_text))
     score = 0
     civil_only = signals["civil"] and not any(
@@ -1176,7 +1190,7 @@ def retrieve_legal_sources(query: str, limit: int = 4) -> list[LegalSourceRecord
 
 def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     query_lower = normalize_text(query)
-    searchable_text = normalize_text(" ".join(record.searchable_parts))
+    searchable_text = normalize_text(get_record_searchable_text(record))
     signals = build_query_signals(query)
     reasons: list[str] = []
 

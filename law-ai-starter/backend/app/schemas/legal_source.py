@@ -18,6 +18,12 @@ class LegalSourceRecord(BaseModel):
     offence_group: str | None = None
     punishment_summary: str | None = None
     provision_kind: str = "general"
+    retrieval_document: str | None = None
+    retrieval_fingerprint: str | None = None
+    embedding_status: str | None = None
+    embedding_model: str | None = None
+    embedding_dimensions: int | None = None
+    embedding_updated_at: str | None = None
 
     @property
     def searchable_parts(self) -> list[str]:

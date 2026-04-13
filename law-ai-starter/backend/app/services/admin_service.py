@@ -29,6 +29,7 @@ from app.schemas.admin import (
 )
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_source_store import (
+    get_legal_source_store_diagnostics,
     get_legal_source_store_snapshot,
     get_legal_source_store_status,
     upsert_persisted_legal_source,
@@ -429,6 +430,11 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
 
 def _build_catalog_source_info():
     snapshot = _active_store_snapshot()
+    diagnostics = get_legal_source_store_diagnostics()
+    detail = (
+        f"{snapshot.detail} Retrieval profile: {diagnostics['retrieval_profile_label']}. "
+        f"{diagnostics['vector_readiness_label']}."
+    )
     return AdminCatalogSourceInfo(
         active_source=snapshot.active_source,
         source_label=snapshot.source_label,
@@ -436,13 +442,14 @@ def _build_catalog_source_info():
         foundation_stage=snapshot.foundation_stage,
         active_record_count=snapshot.active_record_count,
         persisted_record_count=snapshot.persisted_record_count,
-        detail=snapshot.detail,
+        detail=detail,
     )
 
 
 def get_admin_summary() -> AdminSummaryResponse:
     snapshot = _active_store_snapshot()
     retrieval_store = get_legal_source_store_status()
+    diagnostics = get_legal_source_store_diagnostics()
     active_records = snapshot.records
     total_records = len(active_records)
     law_breakdown = _law_breakdown(active_records)
@@ -452,6 +459,8 @@ def get_admin_summary() -> AdminSummaryResponse:
     db_mode_value = "Connected" if snapshot.database_ready else "In memory"
     persisted_value = str(snapshot.persisted_record_count)
     foundation_stage = snapshot.foundation_stage.replace("_", " ")
+    embedding_coverage_value = f"{diagnostics['embedding_coverage_percent']}%"
+    retrieval_profile_value = diagnostics["retrieval_profile_label"]
 
     return AdminSummaryResponse(
         stats=[
@@ -476,6 +485,16 @@ def get_admin_summary() -> AdminSummaryResponse:
                 value=persisted_value,
                 title="Persisted records",
                 description="Legal source rows currently present in the database foundation table when the database is available.",
+            ),
+            AdminStat(
+                value=retrieval_profile_value,
+                title="Retrieval profile",
+                description="Shows whether matching is reading normalized persisted retrieval documents or the in-memory searchable-parts fallback.",
+            ),
+            AdminStat(
+                value=embedding_coverage_value,
+                title="Embedding coverage",
+                description="Percentage of persisted records that already carry ready embedding metadata for the future vector-search layer.",
             ),
             AdminStat(
                 value=snapshot.source_label,
@@ -505,6 +524,10 @@ def get_admin_summary() -> AdminSummaryResponse:
                 title="Shared active source store",
                 text="Admin and chat retrieval now read from the same active source store, so seeded PostgreSQL records can drive both inspection and matching while fallback remains safe.",
             ),
+            AdminRoadmapItem(
+                title="Retrieval metadata foundation",
+                text="Persisted records now store normalized retrieval documents, fingerprints, and embedding-status metadata so the project can move toward pgvector-backed retrieval without breaking today’s rule-based path.",
+            ),
         ],
         status_cards=[
             AdminStatusCard(
@@ -518,14 +541,21 @@ def get_admin_summary() -> AdminSummaryResponse:
                 title="Chat retrieval store",
                 content=(
                     f"The chat retrieval pipeline is currently reading from {retrieval_store.source_label.lower()} with {retrieval_store.active_record_count} active record(s). "
-                    "If PostgreSQL is seeded, the same persisted catalog now supports both admin inspection and live source-backed matching."
+                    f"Current retrieval profile: {retrieval_profile_value.lower()}. If PostgreSQL is seeded, the same persisted catalog now supports both admin inspection and live source-backed matching."
+                ),
+            ),
+            AdminStatusCard(
+                title="Vector-readiness foundation",
+                content=(
+                    f"Embedding readiness is currently {embedding_coverage_value} with {diagnostics['embedding_ready_records']} record(s) marked ready and {diagnostics['embedding_pending_records']} still pending. "
+                    f"Current vector stage: {diagnostics['vector_stage'].replace('_', ' ')}. This keeps the database layer retrieval-ready before real vector search is enabled."
                 ),
             ),
             AdminStatusCard(
                 title="Database foundation",
                 content=(
                     f"Current foundation stage: {foundation_stage}. {snapshot.detail} "
-                    f"The current persisted row count is {persisted_value}."
+                    f"The current persisted row count is {persisted_value}, and the configured embedding model is {diagnostics['embedding_model']} ({diagnostics['embedding_dimensions']} dimensions)."
                 ),
             ),
             AdminStatusCard(
@@ -548,6 +578,10 @@ def get_admin_summary() -> AdminSummaryResponse:
                 text="Prefer persisted legal source records in admin views when the database is ready and seeded.",
             ),
             AdminRoadmapItem(
+                title="Embedding sync layer",
+                text="Generate and refresh embeddings for persisted legal source records so database retrieval can move from rule-based ranking toward hybrid vector search.",
+            ),
+            AdminRoadmapItem(
                 title="Structured editor",
                 text="Add or edit legal records from admin without touching code files directly.",
             ),
@@ -565,8 +599,8 @@ def get_admin_summary() -> AdminSummaryResponse:
             ),
         ],
         admin_boundary=(
-            "This admin area is still a prototype control surface. It can inspect the legal source catalog, open detailed source views, validate working drafts, stage prototype publish actions, and now prefer persisted database records when they exist, "
-            "but authentication, durable approvals, uploads, and production-grade audit logging must be added before it is treated as a real admin system."
+            "This admin area is still a prototype control surface. It can inspect the legal source catalog, open detailed source views, validate working drafts, stage prototype publish actions, and now prefer persisted database records when they exist. "
+            "It also exposes retrieval-metadata readiness for the future vector-search layer, but authentication, durable approvals, uploads, real embedding generation, and production-grade audit logging must be added before it is treated as a real admin system."
         ),
         catalog_source=_build_catalog_source_info(),
     )

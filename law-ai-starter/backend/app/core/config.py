@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     database_bootstrap_legal_sources: bool = False
     database_bootstrap_force_refresh: bool = False
     legal_source_embedding_dimensions: int = 1536
+    legal_source_embedding_model: str = "text-embedding-3-small"
+    legal_source_vector_search_enabled: bool = False
     redis_url: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
