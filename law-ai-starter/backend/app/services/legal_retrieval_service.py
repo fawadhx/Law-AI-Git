@@ -13,6 +13,12 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "snatch",
         "snatched",
         "property",
+        "take",
+        "took",
+        "taken",
+        "without permission",
+        "mobile",
+        "phone",
     ],
     "punishment": [
         "punishment",
@@ -21,6 +27,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "fine",
         "imprisonment",
         "jail",
+        "saza",
     ],
     "threat": [
         "threat",
@@ -30,6 +37,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "intimidation",
         "criminal intimidation",
         "alarm",
+        "blackmail",
     ],
     "defamation": [
         "defamation",
@@ -37,6 +45,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "reputation",
         "false statement",
         "badnami",
+        "false allegation",
     ],
     "online": [
         "online",
@@ -47,12 +56,14 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "facebook",
         "instagram",
         "whatsapp",
+        "tiktok",
     ],
     "privacy": [
         "privacy",
         "private",
         "personal data",
         "personal information",
+        "private photos",
     ],
     "modesty": [
         "modesty",
@@ -62,6 +73,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "video misuse",
         "minor",
         "child",
+        "harassment",
     ],
     "arrest": [
         "arrest",
@@ -89,6 +101,47 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "access to data",
         "access to system",
         "account access",
+        "login access",
+    ],
+    "cheating": [
+        "cheating",
+        "fraud",
+        "fraudulent",
+        "scam",
+        "deception",
+        "dishonest inducement",
+        "420",
+        "dhoka",
+    ],
+    "breach_of_trust": [
+        "criminal breach of trust",
+        "breach of trust",
+        "entrusted property",
+        "misappropriation",
+        "amanat",
+        "khayanat",
+    ],
+    "trespass": [
+        "trespass",
+        "criminal trespass",
+        "illegal entry",
+        "unlawful entry",
+        "land dispute",
+        "property entry",
+        "qabza",
+        "entered",
+        "enter",
+        "plot",
+        "leave",
+    ],
+    "harassment": [
+        "harassment",
+        "sexual harassment",
+        "stalking",
+        "cyber stalking",
+        "insult modesty",
+        "privacy intrusion",
+        "eve teasing",
     ],
     "police": [
         "police",
@@ -102,7 +155,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
 PHRASE_HINTS: dict[str, list[str]] = {
     "online threat": ["threat", "online"],
     "social media threat": ["threat", "online"],
-    "online harassment": ["online", "privacy", "defamation"],
+    "online harassment": ["online", "privacy", "harassment"],
     "social media post": ["online", "defamation"],
     "without warrant": ["arrest", "police"],
     "24 hours": ["detention", "arrest"],
@@ -110,7 +163,20 @@ PHRASE_HINTS: dict[str, list[str]] = {
     "image misuse": ["modesty", "online"],
     "minor online": ["modesty", "online"],
     "hacked account": ["unauthorized_access", "online"],
+    "property fraud": ["cheating", "breach_of_trust"],
+    "entrusted money": ["breach_of_trust", "cheating"],
+    "land entry": ["trespass"],
+    "sexual harassment": ["harassment", "modesty"],
+    "cyber stalking": ["harassment", "online", "threat"],
 }
+
+
+PUNISHMENT_HINTS = ["punishment", "penalty", "sentence", "fine", "jail", "imprisonment", "saza"]
+ONLINE_HINTS = ["online", "internet", "cyber", "social media", "facebook", "instagram", "whatsapp", "tiktok"]
+POLICE_HINTS = ["police", "arrest", "detain", "custody", "warrant"]
+PROPERTY_HINTS = ["property", "money", "land", "plot", "phone", "wallet", "entrusted"]
+FRAUD_HINTS = ["cheat", "cheating", "fraud", "scam", "deceive", "deceived", "420", "trust", "entrusted", "amanat", "khayanat"]
+TRESPASS_HINTS = ["trespass", "illegal entry", "unlawful entry", "plot", "entered", "enter", "land", "leave"]
 
 
 def normalize_text(value: str) -> str:
@@ -159,22 +225,12 @@ def expand_query_terms(query: str) -> list[str]:
     return unique_terms
 
 
+
 def score_record(query: str, record: LegalSourceRecord) -> int:
     query_lower = normalize_text(query)
     query_terms = expand_query_terms(query)
 
-    searchable_parts = [
-        record.source_title,
-        record.law_name,
-        record.section_number,
-        record.section_title,
-        record.summary,
-        record.excerpt,
-        record.citation_label,
-        " ".join(record.tags),
-    ]
-
-    searchable_text = normalize_text(" ".join(searchable_parts))
+    searchable_text = normalize_text(" ".join(record.searchable_parts))
     searchable_tokens = set(tokenize(searchable_text))
 
     score = 0
@@ -189,47 +245,71 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
             elif term in searchable_text:
                 score += 1
 
-    if normalize_text(record.section_title) in query_lower:
-        score += 5
+    section_title = normalize_text(record.section_title)
+    law_name = normalize_text(record.law_name)
+    citation_label = normalize_text(record.citation_label)
 
-    if normalize_text(record.law_name) in query_lower:
+    if section_title and section_title in query_lower:
+        score += 6
+
+    if law_name and law_name in query_lower:
         score += 4
 
-    if normalize_text(record.citation_label) in query_lower:
+    if citation_label and citation_label in query_lower:
         score += 5
 
-    for tag in record.tags:
+    for tag in record.tags + record.aliases + record.keywords:
         tag_normalized = normalize_text(tag)
-        if tag_normalized in query_lower:
+        if tag_normalized and tag_normalized in query_lower:
             score += 3
 
     if record.section_number and record.section_number in query_lower:
         score += 3
 
-    punishment_requested = any(
-        word in query_lower for word in ["punishment", "penalty", "sentence", "fine", "jail"]
-    )
-    if punishment_requested and "punishment" in normalize_text(record.section_title):
-        score += 4
+    punishment_requested = any(word in query_lower for word in PUNISHMENT_HINTS)
+    if punishment_requested and record.provision_kind == "punishment":
+        score += 5
+    elif punishment_requested and record.punishment_summary:
+        score += 2
 
-    online_requested = any(
-        phrase in query_lower for phrase in ["online", "internet", "cyber", "social media"]
-    )
+    online_requested = any(phrase in query_lower for phrase in ONLINE_HINTS)
     if online_requested and record.law_name == "Prevention of Electronic Crimes Act":
         score += 4
 
-    police_requested = any(
-        word in query_lower for word in ["police", "arrest", "detain", "custody", "warrant"]
-    )
+    police_requested = any(word in query_lower for word in POLICE_HINTS)
     if police_requested and record.law_name == "Code of Criminal Procedure":
         score += 4
+
+    property_requested = any(word in query_lower for word in PROPERTY_HINTS)
+    fraud_requested = any(word in query_lower for word in FRAUD_HINTS)
+    trespass_requested = any(word in query_lower for word in TRESPASS_HINTS)
+
+    if property_requested and record.offence_group == "property_offence":
+        score += 2
+
+    if fraud_requested and record.offence_group == "fraud_offence":
+        score += 4
+
+    if trespass_requested and (record.section_number in {"441", "447"} or record.offence_group == "property_offence"):
+        score += 4
+
+    if "420" in query_lower and record.section_number == "420":
+        score += 6
+
+    if "509" in query_lower and record.section_number == "509":
+        score += 6
+
+    if "cyber stalking" in query_lower and record.section_number == "24":
+        score += 8
+
+    if "without permission" in query_lower and record.section_number == "378":
+        score += 5
 
     return score
 
 
-def retrieve_scored_legal_sources(
-    query: str, limit: int = 3
-) -> list[tuple[int, LegalSourceRecord]]:
+
+def retrieve_scored_legal_sources(query: str, limit: int = 3) -> list[tuple[int, LegalSourceRecord]]:
     scored_results: list[tuple[int, LegalSourceRecord]] = []
 
     for record in LEGAL_SOURCES:
@@ -240,6 +320,7 @@ def retrieve_scored_legal_sources(
     scored_results.sort(
         key=lambda item: (
             item[0],
+            1 if item[1].provision_kind == "definition" else 0,
             item[1].law_name,
             item[1].section_number,
         ),
@@ -249,22 +330,15 @@ def retrieve_scored_legal_sources(
     return scored_results[:limit]
 
 
+
 def retrieve_legal_sources(query: str, limit: int = 3) -> list[LegalSourceRecord]:
     return [record for _, record in retrieve_scored_legal_sources(query, limit=limit)]
 
+
+
 def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     query_lower = normalize_text(query)
-    searchable_text = normalize_text(
-        " ".join(
-            [
-                record.law_name,
-                record.section_title,
-                record.summary,
-                record.excerpt,
-                " ".join(record.tags),
-            ]
-        )
-    )
+    searchable_text = normalize_text(" ".join(record.searchable_parts))
 
     reasons: list[str] = []
 
@@ -278,10 +352,11 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
         reasons.append(f"Section number {record.section_number} was mentioned in the query.")
 
     matched_tags = [
-        tag for tag in record.tags if normalize_text(tag) in query_lower
+        tag for tag in (record.tags + record.aliases + record.keywords)
+        if normalize_text(tag) in query_lower
     ]
     if matched_tags:
-        reasons.append(f"Matched legal tags: {', '.join(matched_tags[:3])}.")
+        reasons.append(f"Matched legal tags or aliases: {', '.join(matched_tags[:3])}.")
 
     expanded_terms = expand_query_terms(query)
     concept_hits = []
@@ -301,23 +376,20 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
             f"Conceptual keyword overlap found: {', '.join(unique_hits[:4])}."
         )
 
-    punishment_requested = any(
-        word in query_lower for word in ["punishment", "penalty", "sentence", "fine", "jail"]
-    )
-    if punishment_requested and "punishment" in normalize_text(record.section_title):
+    punishment_requested = any(word in query_lower for word in PUNISHMENT_HINTS)
+    if punishment_requested and record.provision_kind == "punishment":
         reasons.append("Punishment-related wording in the question aligns with this provision.")
 
-    online_requested = any(
-        phrase in query_lower for phrase in ["online", "internet", "cyber", "social media"]
-    )
+    online_requested = any(phrase in query_lower for phrase in ONLINE_HINTS)
     if online_requested and record.law_name == "Prevention of Electronic Crimes Act":
         reasons.append("Online or cyber wording in the question aligns with PECA-related provisions.")
 
-    police_requested = any(
-        word in query_lower for word in ["police", "arrest", "detain", "custody", "warrant"]
-    )
+    police_requested = any(word in query_lower for word in POLICE_HINTS)
     if police_requested and record.law_name == "Code of Criminal Procedure":
         reasons.append("Police or detention wording in the question aligns with criminal-procedure provisions.")
+
+    if record.related_sections:
+        reasons.append(f"This record also links to related sections: {', '.join(record.related_sections[:2])}.")
 
     if not reasons:
         reasons.append("The prototype found a general text similarity with this record.")
