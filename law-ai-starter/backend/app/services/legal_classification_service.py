@@ -1,3 +1,5 @@
+import re
+
 
 from app.schemas.legal_source import LegalSourceRecord
 
@@ -230,6 +232,8 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
 
 
 PROPERTY_GROUP_MAP = {
+    "theft_offence": "theft",
+    "breach_of_trust_offence": "cheating_fraud",
     "fraud_offence": "cheating_fraud",
     "violent_property_offence": "robbery_extortion",
     "threat_offence": "criminal_intimidation",
@@ -241,24 +245,80 @@ PROPERTY_GROUP_MAP = {
     "property_damage_offence": "property_damage",
     "restraint_offence": "restraint_confinement",
     "criminal_procedure": "arrest_detention",
-    "property_offence": "trespass",
+    "trespass_offence": "trespass",
 }
+
 
 
 def normalize_text(value: str) -> str:
     return value.strip().lower()
 
 
+def extract_section_numbers(question: str) -> set[str]:
+    query = normalize_text(question)
+    matches = re.findall(r"\b(?:section\s+)?(\d+[a-z]?)\b", query)
+    return {match.upper() for match in matches}
+
+
+SECTION_CATEGORY_HINTS = {
+    "378": "theft",
+    "379": "theft",
+    "405": "cheating_fraud",
+    "406": "cheating_fraud",
+    "415": "cheating_fraud",
+    "417": "cheating_fraud",
+    "420": "cheating_fraud",
+    "441": "trespass",
+    "447": "trespass",
+    "442": "trespass",
+    "448": "trespass",
+    "499": "defamation",
+    "500": "defamation",
+    "503": "criminal_intimidation",
+    "506": "criminal_intimidation",
+    "509": "harassment",
+    "351": "assault_force",
+    "352": "assault_force",
+    "354": "harassment",
+    "339": "restraint_confinement",
+    "341": "restraint_confinement",
+    "340": "restraint_confinement",
+    "342": "restraint_confinement",
+    "383": "robbery_extortion",
+    "384": "robbery_extortion",
+    "390": "robbery_extortion",
+    "392": "robbery_extortion",
+    "425": "property_damage",
+    "426": "property_damage",
+    "6": "cybercrime",
+    "13": "cybercrime",
+    "14": "cybercrime",
+    "16": "cybercrime",
+    "20": "cybercrime",
+    "21": "harassment",
+    "24": "harassment",
+    "46": "arrest_detention",
+    "54": "arrest_detention",
+    "61": "arrest_detention",
+}
+
+
 def detect_question_category(
     question: str, records: list[LegalSourceRecord] | None = None
 ) -> dict[str, str]:
     query = normalize_text(question)
+    mentioned_sections = extract_section_numbers(question)
     scores: dict[str, int] = {key: 0 for key in CATEGORY_CONFIG.keys()}
 
     for category_key, config in CATEGORY_CONFIG.items():
         for keyword in config["keywords"]:
             if normalize_text(keyword) in query:
                 scores[category_key] += 3
+
+    for section in mentioned_sections:
+        mapped = SECTION_CATEGORY_HINTS.get(section)
+        if mapped:
+            scores[mapped] += 10
 
     if ("threat" in query or "threatening" in query or "blackmail" in query) and "money" in query:
         scores["robbery_extortion"] += 6
@@ -284,15 +344,15 @@ def detect_question_category(
         scores["harassment"] += 8
         scores["assault_force"] += 2
 
-    if any(term in query for term in ["calling me", "keeps calling", "keeps messaging", "again and again"]) and any(
+    if any(term in query for term in ["calling me", "keeps calling", "keeps messaging", "again and again", "boss"]) and any(
         term in query for term in ["photo", "photos", "video", "private"]
     ) and any(term in query for term in ["threat", "threatening", "blackmail", "leak", "viral"]):
-        scores["harassment"] += 10
-        scores["cybercrime"] += 6
-        scores["criminal_intimidation"] += 2
+        scores["harassment"] += 12
+        scores["cybercrime"] += 7
+        scores["criminal_intimidation"] += 1
 
-    if ("online" in query or "cyber" in query) and ("harassment" in query or "stalking" in query):
-        scores["harassment"] += 6
+    if ("online" in query or "cyber" in query or "photo" in query or "photos" in query or "fake profile" in query) and ("harassment" in query or "stalking" in query or "leak" in query or "private" in query):
+        scores["harassment"] += 7
         scores["cybercrime"] += 5
 
     if any(term in query for term in ["private photos", "photo", "photos", "video"]) and any(
@@ -313,6 +373,13 @@ def detect_question_category(
     ):
         scores["trespass"] += 8
 
+    if "punishment" in query and "theft" in query:
+        scores["theft"] += 8
+    if "punishment" in query and any(term in query for term in ["cheating", "fraud", "420", "trust", "amanat", "khayanat"]):
+        scores["cheating_fraud"] += 8
+    if "punishment" in query and any(term in query for term in ["trespass", "house", "home", "plot"]):
+        scores["trespass"] += 6
+
     if "section " in query or "u/s " in query or query.startswith("ppc ") or query.startswith("peca ") or query.startswith("crpc "):
         scores["general"] += 1
 
@@ -329,8 +396,12 @@ def detect_question_category(
         if "criminal procedure" in law_name:
             scores["arrest_detention"] += 4
 
-        if record.section_number in {"442", "448"}:
-            scores["trespass"] += 5
+        if record.section_number in {"378", "379"}:
+            scores["theft"] += 6
+        if record.section_number in {"405", "406", "415", "417", "420"}:
+            scores["cheating_fraud"] += 6
+        if record.section_number in {"442", "448", "441", "447"}:
+            scores["trespass"] += 6
         if record.section_number in {"351", "352"}:
             scores["assault_force"] += 5
         if record.section_number == "354":
@@ -350,14 +421,18 @@ def detect_question_category(
             scores["robbery_extortion"] += 4
 
     if scores["harassment"] > 0 and scores["cybercrime"] > 0 and (
-        "online" in query or "cyber" in query or "social media" in query or "photos" in query
+        "online" in query or "cyber" in query or "social media" in query or "photos" in query or "photo" in query
     ):
-        scores["harassment"] += 4
+        scores["harassment"] += 5
 
     if scores["robbery_extortion"] > 0 and scores["criminal_intimidation"] > 0 and (
         "money" in query or "gunpoint" in query or "snatched" in query
     ):
         scores["robbery_extortion"] += 4
+
+    if scores["harassment"] > 0 and ("photo" in query or "photos" in query or "video" in query) and ("leak" in query or "viral" in query or "blackmail" in query):
+        scores["harassment"] += 4
+        scores["criminal_intimidation"] -= 1
 
     if scores["trespass"] > 0 and scores["property_damage"] > 0 and (
         "house" in query or "home" in query or "plot" in query or "property" in query

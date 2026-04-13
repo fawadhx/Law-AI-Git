@@ -26,6 +26,60 @@ LEGAL_DISCLAIMER = (
 PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
 
 
+def build_answer_intent(question: str) -> dict[str, bool]:
+    refs = extract_section_references(question)
+    lower = question.strip().lower()
+    punishment_focus = any(
+        term in lower for term in ["punishment", "penalty", "sentence", "fine", "jail", "imprisonment", "saza"]
+    )
+    return {
+        "section_lookup": bool(refs),
+        "punishment_focus": punishment_focus,
+    }
+
+
+def record_matches_requested_section(question: str, record: LegalSourceRecord) -> bool:
+    refs = extract_section_references(question)
+    if not refs:
+        return False
+
+    law_short = ""
+    if record.law_name == "Pakistan Penal Code":
+        law_short = "ppc"
+    elif record.law_name == "Prevention of Electronic Crimes Act":
+        law_short = "peca"
+    elif record.law_name == "Code of Criminal Procedure":
+        law_short = "crpc"
+
+    for law_hint, section in refs:
+        if section != record.section_number.upper():
+            continue
+        if law_hint and law_hint != law_short:
+            continue
+        return True
+    return False
+
+
+def choose_primary_record(question: str, records: list[LegalSourceRecord]) -> LegalSourceRecord:
+    intent = build_answer_intent(question)
+
+    if intent["section_lookup"]:
+        for record in records:
+            if record_matches_requested_section(question, record):
+                return record
+
+    if intent["punishment_focus"]:
+        for record in records:
+            if record.provision_kind == "punishment":
+                return record
+
+    for record in records:
+        if is_primary_record(record):
+            return record
+
+    return records[0]
+
+
 def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
     seen: set[tuple[str, str, str]] = set()
     citations: list[Citation] = []
@@ -222,15 +276,46 @@ def summarize_overlap(records: list[LegalSourceRecord]) -> str | None:
     return None
 
 
-def split_records(records: list[LegalSourceRecord]) -> tuple[list[LegalSourceRecord], list[LegalSourceRecord]]:
-    primary_records = [record for record in records if is_primary_record(record)]
-    support_records = [record for record in records if record not in primary_records]
+def split_records(
+    question: str,
+    records: list[LegalSourceRecord],
+) -> tuple[LegalSourceRecord, list[LegalSourceRecord], list[LegalSourceRecord]]:
+    primary = choose_primary_record(question, records)
 
-    if not primary_records and records:
-        primary_records = [records[0]]
-        support_records = records[1:]
+    exact_matches = [
+        record for record in records
+        if record.id != primary.id and record_matches_requested_section(question, record)
+    ]
 
-    return primary_records, support_records
+    related_matches = [
+        record
+        for record in records
+        if record.id != primary.id
+        and primary.related_sections
+        and any(ref.endswith(record.section_number) for ref in primary.related_sections)
+    ]
+
+    if primary.provision_kind == "punishment":
+        main_related = [record for record in related_matches if record.provision_kind != "punishment"]
+        support_records = [
+            record
+            for record in records
+            if record.id != primary.id and record not in exact_matches and record not in main_related
+        ]
+    else:
+        main_related = [
+            record for record in records
+            if record.id != primary.id and record.provision_kind != "punishment"
+        ]
+        support_records = [
+            record
+            for record in records
+            if record.id != primary.id and record not in exact_matches and record not in main_related
+        ]
+
+    ordered_main = exact_matches + [record for record in main_related if record not in exact_matches]
+    return primary, ordered_main, support_records
+
 
 
 def build_rephrase_suggestions(question: str, category_key: str) -> list[str]:
@@ -276,9 +361,14 @@ def build_no_match_answer(
         f"- {suggestion}" for suggestion in build_rephrase_suggestions(question, category["key"])
     )
 
+    section_note = ""
+    if extract_section_references(question):
+        section_note = "The question appears to ask about a specific section, but that exact section could not be confidently resolved from the current prototype records.\n\n"
+
     return (
         "No strong legal-source match was found in the current prototype dataset.\n\n"
         f"Confidence level: {confidence.level.upper()}\n\n"
+        f"{section_note}"
         "What this means:\n"
         "- The system could not confidently map your question to the current internal legal records.\n"
         "- This does not mean no law applies. It only means the current prototype dataset is still limited.\n\n"
@@ -311,6 +401,7 @@ def build_weak_match_answer(
     category: dict[str, str],
     confidence: ChatConfidence,
 ) -> str:
+    section_note = build_specific_section_note(question, records)
     lines = [
         "Closest currently available legal information",
         "",
@@ -321,6 +412,9 @@ def build_weak_match_answer(
         "",
         "Closest prototype sections:",
     ]
+
+    if section_note:
+        lines.extend(["", "Section-note guidance:", section_note])
 
     for record in records[:3]:
         lines.append(build_record_reference(record))
@@ -362,7 +456,7 @@ def build_specific_section_note(question: str, records: list[LegalSourceRecord])
     requested = [section for _, section in refs]
     if any(section in matched_sections for section in requested):
         return (
-            "The query appears to ask about a specific section number, so the system prioritized any exact section match before adding related provisions."
+            "The query appears to ask about a specific section number, so the system prioritized that exact section first and then added closely linked provisions."
         )
 
     return None
@@ -374,8 +468,8 @@ def build_match_answer(
     category: dict[str, str],
     confidence: ChatConfidence,
 ) -> str:
-    primary_records, support_records = split_records(records)
-    primary = primary_records[0]
+    primary, main_related_records, support_records = split_records(question, records)
+    intent = build_answer_intent(question)
 
     if confidence.level == "high":
         opening = "A strong current match was found in the prototype dataset."
@@ -391,11 +485,11 @@ def build_match_answer(
         "",
         opening,
         "",
-        "Primary matched provision:",
+        ("Requested section" if intent["section_lookup"] else ("Primary punishment provision" if intent["punishment_focus"] and primary.provision_kind == "punishment" else "Primary matched provision")) + ":",
         build_record_reference(primary),
     ]
 
-    if primary.punishment_summary:
+    if primary.punishment_summary and primary.provision_kind != "punishment":
         lines.extend(["", f"Primary punishment note: {primary.punishment_summary}"])
 
     section_note = build_specific_section_note(question, records)
@@ -406,9 +500,9 @@ def build_match_answer(
     if overlap_note:
         lines.extend(["", "Overlap note:", overlap_note])
 
-    if len(primary_records) > 1:
+    if main_related_records:
         lines.extend(["", "Other main provisions that may also matter:"])
-        for record in primary_records[1:]:
+        for record in main_related_records:
             lines.append(build_record_reference(record))
 
     if support_records:

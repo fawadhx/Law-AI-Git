@@ -450,6 +450,58 @@ def is_primary_record(record: LegalSourceRecord) -> bool:
     return record.provision_kind in PRIMARY_KINDS
 
 
+def build_query_intent(query: str) -> dict[str, bool]:
+    query_lower = normalize_text(query)
+    section_refs = extract_section_references(query)
+    return {
+        "section_lookup": bool(section_refs),
+        "punishment_focus": any(word in query_lower for word in PUNISHMENT_HINTS),
+        "definition_focus": any(
+            phrase in query_lower
+            for phrase in [
+                "what is",
+                "meaning of",
+                "define",
+                "definition",
+                "cover",
+                "covers",
+                "under section",
+            ]
+        ) and not any(word in query_lower for word in PUNISHMENT_HINTS),
+        "exact_law_mentioned": any(law in query_lower for law in ["ppc", "peca", "crpc"]),
+    }
+
+
+def record_matches_requested_section(query: str, record: LegalSourceRecord) -> bool:
+    references = extract_section_references(query)
+    if not references:
+        return False
+    for law_hint, section_number in references:
+        if section_number != record.section_number.upper():
+            continue
+        if law_hint and law_hint != law_short_name(record):
+            continue
+        return True
+    return False
+
+
+def sort_key_for_record(
+    item: tuple[int, LegalSourceRecord],
+    query: str,
+) -> tuple[int, int, int, str, str]:
+    score, record = item
+    intent = build_query_intent(query)
+    exact_match = 1 if record_matches_requested_section(query, record) else 0
+    if intent["section_lookup"]:
+        priority = 2 if exact_match else (1 if record.provision_kind == "punishment" else 0)
+    elif intent["punishment_focus"]:
+        priority = 2 if record.provision_kind == "punishment" else (1 if is_primary_record(record) else 0)
+    else:
+        priority = 2 if is_primary_record(record) else (1 if record.provision_kind == "punishment" else 0)
+
+    return (score, exact_match, priority, record.law_name, record.section_number)
+
+
 def citation_reference(record: LegalSourceRecord) -> str:
     return normalize_text(record.citation_label)
 
@@ -477,11 +529,11 @@ def score_exact_section_match(query: str, record: LegalSourceRecord) -> int:
     for law_hint, section_number in references:
         if section_number != record.section_number.upper():
             continue
-        score += 12
+        score += 18
         if law_hint and law_hint == law_short_name(record):
-            score += 8
+            score += 10
         elif law_hint:
-            score -= 6
+            score -= 8
 
     return score
 
@@ -490,6 +542,7 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     query_lower = normalize_text(query)
     query_terms = expand_query_terms(query)
     signals = build_query_signals(query)
+    intent = build_query_intent(query)
 
     searchable_text = normalize_text(" ".join(record.searchable_parts))
     searchable_tokens = set(tokenize(searchable_text))
@@ -529,9 +582,11 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
         score += 2
 
     if signals["punishment"] and record.provision_kind == "punishment":
-        score += 5
+        score += 10
     elif signals["punishment"] and record.punishment_summary:
-        score += 2
+        score += 4
+    elif not signals["punishment"] and not intent["section_lookup"] and record.provision_kind == "punishment":
+        score -= 2
 
     if signals["online"] and record.law_name == "Prevention of Electronic Crimes Act":
         score += 4
@@ -541,7 +596,7 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     elif not signals["police"] and record.offence_group == "criminal_procedure":
         score -= 5
 
-    if signals["property"] and record.offence_group == "property_offence":
+    if signals["property"] and record.offence_group in {"theft_offence", "breach_of_trust_offence", "trespass_offence"}:
         score += 2
 
     if signals["fraud"] and record.offence_group == "fraud_offence":
@@ -688,8 +743,25 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if "fake profile" in query_lower and record.section_number in {"16", "24", "20"}:
         score += 7
 
-    if "blackmail online" in query_lower and record.section_number in {"24", "503", "506"}:
-        score += 7
+    if intent["section_lookup"] and record_matches_requested_section(query, record):
+        score += 18
+        if record.provision_kind == "punishment":
+            score += 2
+
+    if intent["definition_focus"] and is_primary_record(record):
+        score += 4
+
+    if signals["confinement"] and not signals["assault"] and record.offence_group == "assault_offence":
+        score -= 4
+
+    if signals["mentions_photo"] and signals["threat"] and record.section_number in {"24", "21", "20", "509"}:
+        score += 3
+
+    if signals["mentions_photo"] and signals["threat"] and record.section_number in {"503", "506"} and not signals["mentions_money"]:
+        score -= 1
+
+    if signals["punishment"] and not intent["section_lookup"] and is_primary_record(record) and record.punishment_summary:
+        score += 2
 
     return score
 
@@ -776,21 +848,38 @@ def select_contextual_records(
     if not scored_results:
         return []
 
-    top_score, primary = scored_results[0]
     signals = build_query_signals(query)
+    intent = build_query_intent(query)
+    ranked_results = sorted(scored_results, key=lambda item: sort_key_for_record(item, query), reverse=True)
+    top_score, primary = ranked_results[0]
     selected: list[tuple[int, LegalSourceRecord]] = [(top_score, primary)]
     selected_ids = {primary.id}
 
     linked_records = sorted(
-        find_linked_records(primary, scored_results),
+        find_linked_records(primary, ranked_results),
         key=lambda item: (
-            1
-            if (
-                (primary.provision_kind == "punishment" and is_primary_record(item[1]))
-                or (primary.provision_kind != "punishment" and item[1].provision_kind == "punishment")
-            )
-            else 0,
             item[0],
+            (
+                2
+                if (
+                    intent["punishment_focus"]
+                    and item[1].provision_kind == "punishment"
+                )
+                else (
+                    2
+                    if (
+                        not intent["punishment_focus"]
+                        and is_primary_record(item[1])
+                    )
+                    else (
+                        1
+                        if (
+                            item[1].provision_kind == "punishment"
+                        )
+                        else 0
+                    )
+                )
+            ),
         ),
         reverse=True,
     )
@@ -803,8 +892,9 @@ def select_contextual_records(
             continue
         if (
             signals["punishment"]
-            or signals["section_lookup"]
+            or intent["section_lookup"]
             or record.provision_kind == "punishment"
+            or (intent["section_lookup"] and any(ref in record.citation_label.lower() for ref in [primary.section_number.lower()]))
             or record.law_name != primary.law_name
             or (signals["house_context"] and record.section_number in {"448", "447"})
         ):
@@ -814,7 +904,7 @@ def select_contextual_records(
 
     overlap_candidates = [
         item
-        for item in scored_results[1:]
+        for item in ranked_results[1:]
         if item[1].id not in selected_ids
         and should_include_overlap(primary, item[1], item[0], top_score, query)
     ]
@@ -840,16 +930,25 @@ def select_contextual_records(
                 break
             if linked_record.id in selected_ids:
                 continue
-            if linked_record.provision_kind == "punishment" or signals["punishment"]:
+            if intent["punishment_focus"]:
+                include_linked = linked_record.provision_kind == "punishment" or is_primary_record(linked_record)
+            else:
+                include_linked = is_primary_record(linked_record) or (
+                    linked_record.provision_kind == "punishment" and len(selected) + 1 >= limit
+                )
+            if include_linked:
                 selected.append((linked_score, linked_record))
                 selected_ids.add(linked_record.id)
                 break
 
     minimum_fill_score = max(6, top_score - 10)
-    for score, record in scored_results[1:]:
+    for score, record in ranked_results[1:]:
         if len(selected) >= limit:
             break
         if record.id in selected_ids or score < minimum_fill_score:
+            continue
+        same_group = primary.offence_group and record.offence_group == primary.offence_group
+        if not (same_group or intent["section_lookup"]):
             continue
         selected.append((score, record))
         selected_ids.add(record.id)
@@ -865,15 +964,7 @@ def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int,
         if score > 0:
             all_results.append((score, record))
 
-    all_results.sort(
-        key=lambda item: (
-            item[0],
-            1 if is_primary_record(item[1]) else 0,
-            item[1].law_name,
-            item[1].section_number,
-        ),
-        reverse=True,
-    )
+    all_results.sort(key=lambda item: sort_key_for_record(item, query), reverse=True)
 
     return select_contextual_records(query, all_results, limit)
 
