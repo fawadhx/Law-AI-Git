@@ -30,6 +30,7 @@ from app.schemas.admin import (
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_source_store import (
     get_legal_source_store_snapshot,
+    get_legal_source_store_status,
     upsert_persisted_legal_source,
 )
 
@@ -441,6 +442,7 @@ def _build_catalog_source_info():
 
 def get_admin_summary() -> AdminSummaryResponse:
     snapshot = _active_store_snapshot()
+    retrieval_store = get_legal_source_store_status()
     active_records = snapshot.records
     total_records = len(active_records)
     law_breakdown = _law_breakdown(active_records)
@@ -500,8 +502,8 @@ def get_admin_summary() -> AdminSummaryResponse:
                 text="Edit a working draft safely, validate fields, and preview readiness without changing the live prototype dataset.",
             ),
             AdminRoadmapItem(
-                title="Database-backed source reading",
-                text="Let admin prefer persisted PostgreSQL records when they exist while still falling back safely to the in-memory prototype catalog.",
+                title="Shared active source store",
+                text="Admin and chat retrieval now read from the same active source store, so seeded PostgreSQL records can drive both inspection and matching while fallback remains safe.",
             ),
         ],
         status_cards=[
@@ -509,7 +511,14 @@ def get_admin_summary() -> AdminSummaryResponse:
                 title="Source catalog status",
                 content=(
                     f"Admin is currently using {snapshot.source_label.lower()} with {total_records} active record(s). "
-                    "Record inspection, draft validation, workspace shelving, and controlled session publish are available while database-backed retrieval is being introduced in Phase 5."
+                    "Record inspection, draft validation, workspace shelving, and controlled session publish are available while the shared active source store is being expanded in Phase 5."
+                ),
+            ),
+            AdminStatusCard(
+                title="Chat retrieval store",
+                content=(
+                    f"The chat retrieval pipeline is currently reading from {retrieval_store.source_label.lower()} with {retrieval_store.active_record_count} active record(s). "
+                    "If PostgreSQL is seeded, the same persisted catalog now supports both admin inspection and live source-backed matching."
                 ),
             ),
             AdminStatusCard(

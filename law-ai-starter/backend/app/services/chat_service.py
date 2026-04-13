@@ -15,6 +15,7 @@ from app.services.legal_retrieval_service import (
     build_query_signals,
     extract_section_references,
     explain_record_match,
+    get_retrieval_source_status,
     retrieve_scored_legal_sources,
 )
 
@@ -25,6 +26,24 @@ LEGAL_DISCLAIMER = (
 )
 
 PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
+
+
+def build_source_store_scope_note(question: str, category_key: str, confidence_level: str) -> str | None:
+    status = get_retrieval_source_status()
+    if status["active_source"] != "database":
+        return None
+
+    lower = question.strip().lower()
+    exact_lookup_terms = ["section", "ppc", "peca", "crpc", "fir", "register fir", "24 hours", "without warrant"]
+    is_exact_lookup = any(term in lower for term in exact_lookup_terms)
+
+    if confidence_level == "high" and (is_exact_lookup or category_key in {"fir_reporting", "arrest_detention", "officer_authority"}):
+        return (
+            "Active-source note: this response was matched from the persisted legal-source catalog that currently backs Phase 5 retrieval. "
+            "The legal-information-only boundary still applies."
+        )
+
+    return None
 
 
 OFFICER_RANK_ALIASES = {

@@ -1,9 +1,21 @@
 
 import re
 
-from app.data.legal_sources import LEGAL_SOURCES
 from app.schemas.legal_source import LegalSourceRecord
+from app.services.legal_source_store import get_active_legal_source_records, get_legal_source_store_status
 
+
+def get_retrieval_source_status() -> dict[str, object]:
+    status = get_legal_source_store_status()
+    return {
+        "active_source": status.active_source,
+        "source_label": status.source_label,
+        "database_ready": status.database_ready,
+        "foundation_stage": status.foundation_stage,
+        "active_record_count": status.active_record_count,
+        "persisted_record_count": status.persisted_record_count,
+        "detail": status.detail,
+    }
 
 CONCEPT_SYNONYMS: dict[str, list[str]] = {
     "theft": [
@@ -1140,7 +1152,7 @@ def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int,
         [signals["police"], signals["section_lookup"], signals["threat"], signals["online"], signals["fraud"]]
     )
 
-    for record in LEGAL_SOURCES:
+    for record in get_active_legal_source_records():
         score = score_record(query, record)
         if score > 0:
             all_results.append((score, record))
