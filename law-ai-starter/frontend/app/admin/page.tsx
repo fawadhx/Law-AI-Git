@@ -19,6 +19,16 @@ type AdminRoadmapItem = {
   text: string;
 };
 
+type AdminCatalogSourceInfo = {
+  active_source: string;
+  source_label: string;
+  database_ready: boolean;
+  foundation_stage: string;
+  active_record_count: number;
+  persisted_record_count: number;
+  detail: string;
+};
+
 type AdminSummaryResponse = {
   stats: AdminStat[];
   control_areas: AdminRoadmapItem[];
@@ -26,6 +36,7 @@ type AdminSummaryResponse = {
   workflow_steps: string[];
   roadmap_items: AdminRoadmapItem[];
   admin_boundary: string;
+  catalog_source?: AdminCatalogSourceInfo | null;
 };
 
 type AdminSourceRecord = {
@@ -60,6 +71,7 @@ type AdminSourceCatalogResponse = {
   available_groups: string[];
   available_kinds: string[];
   workflow_note: string;
+  catalog_source?: AdminCatalogSourceInfo | null;
 };
 
 type AdminLinkedRecord = {
@@ -89,6 +101,7 @@ type AdminSourceDetailResponse = {
   same_group_records: AdminLinkedRecord[];
   same_law_records: AdminLinkedRecord[];
   workflow_note: string;
+  catalog_source?: AdminCatalogSourceInfo | null;
 };
 
 
@@ -1194,6 +1207,30 @@ export default function AdminPage() {
               ))}
             </div>
 
+            {summary.catalog_source && (
+              <div style={{ ...cardStyle, padding: "22px", marginBottom: "24px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", flexWrap: "wrap", marginBottom: "14px" }}>
+                  <div>
+                    <div style={{ ...badge(summary.catalog_source.active_source === "database" ? "green" : "blue"), marginBottom: "10px" }}>
+                      {summary.catalog_source.source_label}
+                    </div>
+                    <div style={{ fontSize: "24px", fontWeight: 700, marginBottom: "8px" }}>
+                      Active source store
+                    </div>
+                    <div style={{ color: "#d6e2ff", lineHeight: 1.7, maxWidth: "900px" }}>
+                      {summary.catalog_source.detail}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignContent: "flex-start" }}>
+                    <div style={chipStyle}>Stage: {prettyKind(summary.catalog_source.foundation_stage)}</div>
+                    <div style={chipStyle}>Active records: {summary.catalog_source.active_record_count}</div>
+                    <div style={chipStyle}>Persisted rows: {summary.catalog_source.persisted_record_count}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div
               style={{
                 display: "grid",
@@ -1248,6 +1285,25 @@ export default function AdminPage() {
                     <div style={{ fontSize: "28px", fontWeight: 800 }}>{filteredProcedureCount}</div>
                   </div>
                 </div>
+
+                {catalog.catalog_source && (
+                  <div style={{ ...softCardStyle, marginBottom: "16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", marginBottom: "8px" }}>
+                      <div style={{ fontWeight: 700, color: "#ffffff" }}>Catalog source</div>
+                      <div style={badge(catalog.catalog_source.active_source === "database" ? "green" : "blue")}>
+                        {catalog.catalog_source.source_label}
+                      </div>
+                    </div>
+                    <div style={{ color: "#d6e2ff", lineHeight: 1.7, marginBottom: "8px" }}>
+                      {catalog.catalog_source.detail}
+                    </div>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <div style={chipStyle}>Active {catalog.catalog_source.active_record_count}</div>
+                      <div style={chipStyle}>Persisted {catalog.catalog_source.persisted_record_count}</div>
+                      <div style={chipStyle}>{prettyKind(catalog.catalog_source.foundation_stage)}</div>
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ color: "#d6e2ff", lineHeight: 1.7, marginBottom: "16px" }}>
                   {catalog.workflow_note}

@@ -12,6 +12,16 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
+    openai_api_key: str | None = None
+    database_url: str | None = None
+    database_echo: bool = False
+    database_pool_pre_ping: bool = True
+    database_auto_create_tables: bool = False
+    database_bootstrap_legal_sources: bool = False
+    database_bootstrap_force_refresh: bool = False
+    legal_source_embedding_dimensions: int = 1536
+    redis_url: str | None = None
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("allowed_origins", mode="before")

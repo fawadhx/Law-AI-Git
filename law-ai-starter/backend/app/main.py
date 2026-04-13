@@ -1,8 +1,13 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.db.bootstrap import initialize_database_foundation
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.app_name,
@@ -19,6 +24,18 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.on_event("startup")
+def startup_event() -> None:
+    snapshot = initialize_database_foundation()
+    logger.info(
+        "Database foundation status | mode=%s | ready=%s | stage=%s | persisted_records=%s",
+        snapshot.get("mode"),
+        snapshot.get("ready"),
+        snapshot.get("foundation_stage"),
+        snapshot.get("persisted_records"),
+    )
 
 
 @app.get("/")

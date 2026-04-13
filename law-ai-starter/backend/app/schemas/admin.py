@@ -17,6 +17,18 @@ class AdminRoadmapItem(BaseModel):
     text: str
 
 
+
+
+class AdminCatalogSourceInfo(BaseModel):
+    active_source: str
+    source_label: str
+    database_ready: bool
+    foundation_stage: str
+    active_record_count: int
+    persisted_record_count: int
+    detail: str
+
+
 class AdminSummaryResponse(BaseModel):
     stats: list[AdminStat]
     control_areas: list[AdminRoadmapItem]
@@ -24,6 +36,7 @@ class AdminSummaryResponse(BaseModel):
     workflow_steps: list[str]
     roadmap_items: list[AdminRoadmapItem]
     admin_boundary: str
+    catalog_source: AdminCatalogSourceInfo | None = None
 
 
 class AdminSourceRecord(BaseModel):
@@ -53,6 +66,7 @@ class AdminSourceCatalogSummary(BaseModel):
 
 class AdminSourceCatalogResponse(BaseModel):
     summary: AdminSourceCatalogSummary
+    catalog_source: AdminCatalogSourceInfo | None = None
     items: list[AdminSourceRecord]
     available_laws: list[str]
     available_groups: list[str]
@@ -83,6 +97,7 @@ class AdminSourceDetailRecord(AdminSourceRecord):
 
 class AdminSourceDetailResponse(BaseModel):
     item: AdminSourceDetailRecord
+    catalog_source: AdminCatalogSourceInfo | None = None
     companion_records: list[AdminLinkedRecord] = Field(default_factory=list)
     same_group_records: list[AdminLinkedRecord] = Field(default_factory=list)
     same_law_records: list[AdminLinkedRecord] = Field(default_factory=list)

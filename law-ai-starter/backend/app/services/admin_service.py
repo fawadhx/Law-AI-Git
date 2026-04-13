@@ -3,6 +3,7 @@ from collections import Counter
 from app.data.legal_sources import LEGAL_SOURCES
 from app.data.officer_authority import OFFICER_AUTHORITY_DATA
 from app.schemas.admin import (
+    AdminCatalogSourceInfo,
     AdminDraftFieldChange,
     AdminDraftSectionCheck,
     AdminDraftValidationIssue,
@@ -27,22 +28,38 @@ from app.schemas.admin import (
     AdminPublishExecutionResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
+from app.services.legal_source_store import (
+    get_legal_source_store_snapshot,
+    upsert_persisted_legal_source,
+)
 
 
-def _record_index() -> dict[str, LegalSourceRecord]:
-    return {record.id: record for record in LEGAL_SOURCES}
+def _active_store_snapshot():
+    return get_legal_source_store_snapshot()
 
 
-def _known_laws() -> list[str]:
-    return sorted({record.law_name for record in LEGAL_SOURCES})
+def _active_records() -> list[LegalSourceRecord]:
+    return _active_store_snapshot().records
 
 
-def _known_kinds() -> list[str]:
-    return sorted({record.provision_kind for record in LEGAL_SOURCES})
+def _record_index(records: list[LegalSourceRecord] | None = None) -> dict[str, LegalSourceRecord]:
+    active = records if records is not None else _active_records()
+    return {record.id: record for record in active}
 
 
-def _known_groups() -> list[str]:
-    return sorted({record.offence_group for record in LEGAL_SOURCES if record.offence_group})
+def _known_laws(records: list[LegalSourceRecord] | None = None) -> list[str]:
+    active = records if records is not None else _active_records()
+    return sorted({record.law_name for record in active})
+
+
+def _known_kinds(records: list[LegalSourceRecord] | None = None) -> list[str]:
+    active = records if records is not None else _active_records()
+    return sorted({record.provision_kind for record in active})
+
+
+def _known_groups(records: list[LegalSourceRecord] | None = None) -> list[str]:
+    active = records if records is not None else _active_records()
+    return sorted({record.offence_group for record in active if record.offence_group})
 
 
 def _section_sort_key(value: str) -> tuple[int, str]:
@@ -67,12 +84,14 @@ def _clean_list(values: list[str]) -> list[str]:
     return cleaned
 
 
-def _law_breakdown() -> Counter[str]:
-    return Counter(record.law_name for record in LEGAL_SOURCES)
+def _law_breakdown(records: list[LegalSourceRecord] | None = None) -> Counter[str]:
+    active = records if records is not None else _active_records()
+    return Counter(record.law_name for record in active)
 
 
-def _group_breakdown() -> Counter[str]:
-    return Counter(record.offence_group or "ungrouped" for record in LEGAL_SOURCES)
+def _group_breakdown(records: list[LegalSourceRecord] | None = None) -> Counter[str]:
+    active = records if records is not None else _active_records()
+    return Counter(record.offence_group or "ungrouped" for record in active)
 
 
 def _slugify(value: str) -> str:
@@ -205,10 +224,10 @@ def _dedupe_linked_records(items: list[AdminLinkedRecord]) -> list[AdminLinkedRe
     return deduped
 
 
-def _companion_records(record: LegalSourceRecord) -> list[AdminLinkedRecord]:
+def _companion_records(record: LegalSourceRecord, records: list[LegalSourceRecord]) -> list[AdminLinkedRecord]:
     companions: list[AdminLinkedRecord] = []
 
-    for other in _sort_records(list(LEGAL_SOURCES)):
+    for other in _sort_records(list(records)):
         if other.id == record.id:
             continue
 
@@ -231,13 +250,13 @@ def _companion_records(record: LegalSourceRecord) -> list[AdminLinkedRecord]:
     return _dedupe_linked_records(companions)[:8]
 
 
-def _same_group_records(record: LegalSourceRecord, excluded_ids: set[str]) -> list[AdminLinkedRecord]:
+def _same_group_records(record: LegalSourceRecord, excluded_ids: set[str], records: list[LegalSourceRecord]) -> list[AdminLinkedRecord]:
     if not record.offence_group:
         return []
 
     results = [
         _build_linked_record(other, "Same offence group")
-        for other in _sort_records(list(LEGAL_SOURCES))
+        for other in _sort_records(list(records))
         if other.id not in excluded_ids
         and other.id != record.id
         and other.offence_group == record.offence_group
@@ -245,10 +264,10 @@ def _same_group_records(record: LegalSourceRecord, excluded_ids: set[str]) -> li
     return results[:8]
 
 
-def _same_law_records(record: LegalSourceRecord, excluded_ids: set[str]) -> list[AdminLinkedRecord]:
+def _same_law_records(record: LegalSourceRecord, excluded_ids: set[str], records: list[LegalSourceRecord]) -> list[AdminLinkedRecord]:
     results = [
         _build_linked_record(other, "Same law family")
-        for other in _sort_records(list(LEGAL_SOURCES))
+        for other in _sort_records(list(records))
         if other.id not in excluded_ids
         and other.id != record.id
         and other.law_name == record.law_name
@@ -310,13 +329,13 @@ def _normalize_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftInput:
     )
 
 
-def _related_section_check(payload: AdminSourceDraftInput) -> AdminDraftSectionCheck:
+def _related_section_check(payload: AdminSourceDraftInput, records: list[LegalSourceRecord]) -> AdminDraftSectionCheck:
     if not payload.related_sections or not payload.law_name:
         return AdminDraftSectionCheck()
 
     valid_sections = {
         record.section_number
-        for record in LEGAL_SOURCES
+        for record in records
         if record.law_name == payload.law_name
     }
     existing = [section for section in payload.related_sections if section in valid_sections]
@@ -352,6 +371,7 @@ def _build_draft_preview(payload: AdminSourceDraftInput) -> AdminSourceDraftPrev
 
 
 def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftValidationIssue], AdminDraftSectionCheck]:
+    active_records = _active_records()
     issues: list[AdminDraftValidationIssue] = []
 
     def add_issue(field: str, level: str, message: str) -> None:
@@ -361,7 +381,7 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
         add_issue("source_title", "error", "Source title is required.")
     if not payload.law_name:
         add_issue("law_name", "error", "Law name is required.")
-    elif payload.law_name not in _known_laws():
+    elif payload.law_name not in _known_laws(active_records):
         add_issue("law_name", "warning", "Law name is not in the current prototype catalog, so linked-section checks will be limited.")
     if not payload.section_number:
         add_issue("section_number", "error", "Section number is required.")
@@ -376,7 +396,7 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
     elif len(payload.excerpt) < 80:
         add_issue("excerpt", "warning", "Excerpt looks short for a citation-first answer experience.")
 
-    if payload.provision_kind not in _known_kinds():
+    if payload.provision_kind not in _known_kinds(active_records):
         add_issue("provision_kind", "warning", "Provision kind is not in the current prototype set.")
 
     if payload.provision_kind == "punishment" and not payload.punishment_summary:
@@ -392,7 +412,7 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
     if len(payload.keywords) == 0:
         add_issue("keywords", "warning", "No keywords added yet. Retrieval quality may be weaker.")
 
-    related_section_check = _related_section_check(payload)
+    related_section_check = _related_section_check(payload, active_records)
     if related_section_check.missing:
         add_issue(
             "related_sections",
@@ -406,28 +426,59 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
     return issues, related_section_check
 
 
+def _build_catalog_source_info():
+    snapshot = _active_store_snapshot()
+    return AdminCatalogSourceInfo(
+        active_source=snapshot.active_source,
+        source_label=snapshot.source_label,
+        database_ready=snapshot.database_ready,
+        foundation_stage=snapshot.foundation_stage,
+        active_record_count=snapshot.active_record_count,
+        persisted_record_count=snapshot.persisted_record_count,
+        detail=snapshot.detail,
+    )
+
+
 def get_admin_summary() -> AdminSummaryResponse:
-    total_records = len(LEGAL_SOURCES)
-    law_breakdown = _law_breakdown()
-    group_breakdown = _group_breakdown()
-    punishment_count = sum(1 for record in LEGAL_SOURCES if record.provision_kind == "punishment")
+    snapshot = _active_store_snapshot()
+    active_records = snapshot.records
+    total_records = len(active_records)
+    law_breakdown = _law_breakdown(active_records)
+    group_breakdown = _group_breakdown(active_records)
+    punishment_count = sum(1 for record in active_records if record.provision_kind == "punishment")
+
+    db_mode_value = "Connected" if snapshot.database_ready else "In memory"
+    persisted_value = str(snapshot.persisted_record_count)
+    foundation_stage = snapshot.foundation_stage.replace("_", " ")
 
     return AdminSummaryResponse(
         stats=[
             AdminStat(
                 value=str(total_records),
                 title="Source records",
-                description="Structured legal source records currently available to the prototype retrieval layer.",
+                description=(
+                    "Structured legal source records currently visible to admin from the active catalog source."
+                ),
             ),
             AdminStat(
                 value=str(len(law_breakdown)),
                 title="Law families",
-                description="Distinct laws represented in the current in-memory legal source catalog.",
+                description="Distinct laws represented in the active admin source catalog.",
             ),
             AdminStat(
-                value=str(len(group_breakdown)),
-                title="Provision groups",
-                description="Grouped offence or procedure clusters used for ranking, overlap handling, and answer composition.",
+                value=db_mode_value,
+                title="Database mode",
+                description="Shows whether the Phase 5 foundation is still running in memory or connected to PostgreSQL.",
+            ),
+            AdminStat(
+                value=persisted_value,
+                title="Persisted records",
+                description="Legal source rows currently present in the database foundation table when the database is available.",
+            ),
+            AdminStat(
+                value=snapshot.source_label,
+                title="Active catalog source",
+                description="Shows whether admin is reading from the persisted database catalog or the in-memory prototype fallback.",
             ),
             AdminStat(
                 value=str(len(OFFICER_AUTHORITY_DATA)),
@@ -449,33 +500,44 @@ def get_admin_summary() -> AdminSummaryResponse:
                 text="Edit a working draft safely, validate fields, and preview readiness without changing the live prototype dataset.",
             ),
             AdminRoadmapItem(
-                title="Prompt and policy controls",
-                text="Keep future disclaimers, safety guidance, and classification rules centrally managed.",
+                title="Database-backed source reading",
+                text="Let admin prefer persisted PostgreSQL records when they exist while still falling back safely to the in-memory prototype catalog.",
             ),
         ],
         status_cards=[
             AdminStatusCard(
                 title="Source catalog status",
                 content=(
-                    f"The admin panel is now connected to a live prototype catalog of {total_records} in-memory legal records. "
-                    "Record inspection, draft validation, and an in-memory workspace shelf are available, but real persistence, approvals, and uploads are still planned rather than implemented."
+                    f"Admin is currently using {snapshot.source_label.lower()} with {total_records} active record(s). "
+                    "Record inspection, draft validation, workspace shelving, and controlled session publish are available while database-backed retrieval is being introduced in Phase 5."
+                ),
+            ),
+            AdminStatusCard(
+                title="Database foundation",
+                content=(
+                    f"Current foundation stage: {foundation_stage}. {snapshot.detail} "
+                    f"The current persisted row count is {persisted_value}."
                 ),
             ),
             AdminStatusCard(
                 title="Coverage status",
                 content=(
-                    f"The current catalog spans {len(law_breakdown)} law families and {punishment_count} punishment-oriented sections, "
+                    f"The active catalog spans {len(law_breakdown)} law families, {len(group_breakdown)} provision groups, and {punishment_count} punishment-oriented sections, "
                     "which is enough for a credible prototype but not yet a full legal corpus."
                 ),
             ),
         ],
         workflow_steps=[
+            "Keep the in-memory catalog as the fallback baseline while PostgreSQL-backed admin reads are introduced safely.",
             "Review section wording, excerpt quality, and linked sections before treating a record as production-ready.",
-            "Validate a working draft, then save it into the in-memory workspace shelf before moving it toward publish review.",
-            "Verify that offence, punishment, and procedure sections are paired correctly for answer composition.",
-            "Prepare future source editing, publishing, and audit-log controls before any real admin rollout.",
+            "Validate a working draft, then save it into the workspace shelf before moving it toward publish review.",
+            "Prepare future retrieval migration, approvals, and audit-log controls before any real admin rollout.",
         ],
         roadmap_items=[
+            AdminRoadmapItem(
+                title="Database read path",
+                text="Prefer persisted legal source records in admin views when the database is ready and seeded.",
+            ),
             AdminRoadmapItem(
                 title="Structured editor",
                 text="Add or edit legal records from admin without touching code files directly.",
@@ -489,28 +551,26 @@ def get_admin_summary() -> AdminSummaryResponse:
                 text="Maintain officer authority summaries and boundaries alongside legal section references.",
             ),
             AdminRoadmapItem(
-                title="Policy manager",
-                text="Version disclaimers, retrieval rules, and future safety guidance from a controlled admin layer.",
-            ),
-            AdminRoadmapItem(
                 title="Audit trail",
                 text="Track record changes, approvals, and future admin actions before production deployment.",
             ),
         ],
         admin_boundary=(
-            "This admin area is still a prototype control surface. It can inspect the legal source catalog, open detailed source views, and validate working drafts, "
-            "but authentication, persistence, approvals, uploads, and audit logging must be added before it is treated as a real production admin system."
+            "This admin area is still a prototype control surface. It can inspect the legal source catalog, open detailed source views, validate working drafts, stage prototype publish actions, and now prefer persisted database records when they exist, "
+            "but authentication, durable approvals, uploads, and production-grade audit logging must be added before it is treated as a real admin system."
         ),
+        catalog_source=_build_catalog_source_info(),
     )
 
 
-
 def get_admin_source_catalog() -> AdminSourceCatalogResponse:
-    law_breakdown = _law_breakdown()
-    group_breakdown = _group_breakdown()
+    snapshot = _active_store_snapshot()
+    active_records = snapshot.records
+    law_breakdown = _law_breakdown(active_records)
+    group_breakdown = _group_breakdown(active_records)
 
     items = sorted(
-        (_build_source_record(record) for record in LEGAL_SOURCES),
+        (_build_source_record(record) for record in active_records),
         key=lambda item: (item.law_name.lower(), _section_sort_key(item.section_number), item.section_title.lower()),
     )
 
@@ -522,38 +582,42 @@ def get_admin_source_catalog() -> AdminSourceCatalogResponse:
             punishment_record_count=sum(1 for item in items if item.provision_kind == "punishment"),
             procedure_record_count=sum(1 for item in items if item.provision_kind == "procedure"),
         ),
+        catalog_source=_build_catalog_source_info(),
         items=items,
         available_laws=sorted(law_breakdown.keys()),
         available_groups=sorted(group_breakdown.keys()),
-        available_kinds=sorted({record.provision_kind for record in LEGAL_SOURCES}),
+        available_kinds=sorted({record.provision_kind for record in active_records}),
         workflow_note=(
-            "This catalog is still read-only, but it now supports a detail workflow and a draft-validation workflow so one record can be inspected and prepared before future edit, review, publish, and archive actions are added."
+            "This catalog is still read-only, but admin can now prefer persisted database records when PostgreSQL is ready and seeded, while still falling back safely to the in-memory prototype catalog. "
+            "The detail view, draft validation workflow, and session publish tools remain available on top of that active source."
         ),
     )
 
 
-
 def get_admin_source_detail(source_id: str) -> AdminSourceDetailResponse | None:
-    record = _record_index().get(source_id)
+    snapshot = _active_store_snapshot()
+    active_records = snapshot.records
+    record = _record_index(active_records).get(source_id)
     if record is None:
         return None
 
-    companion_records = _companion_records(record)
+    companion_records = _companion_records(record, active_records)
     excluded_ids = {linked.id for linked in companion_records}
-    same_group_records = _same_group_records(record, excluded_ids)
+    same_group_records = _same_group_records(record, excluded_ids, active_records)
     excluded_ids.update(linked.id for linked in same_group_records)
-    same_law_records = _same_law_records(record, excluded_ids)
+    same_law_records = _same_law_records(record, excluded_ids, active_records)
 
     return AdminSourceDetailResponse(
         item=_detail_record(record, companion_records, same_group_records, same_law_records),
+        catalog_source=_build_catalog_source_info(),
         companion_records=companion_records,
         same_group_records=same_group_records,
         same_law_records=same_law_records,
         workflow_note=(
-            "Use this detail view to validate excerpt quality, searchable wording, and section pairings before future draft, review, and publish workflows are added."
+            "Use this detail view to validate excerpt quality, searchable wording, and section pairings. "
+            "When PostgreSQL is seeded, this panel now reads from the persisted source catalog instead of only the in-memory prototype list."
         ),
     )
-
 
 
 def validate_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftValidationResponse:
@@ -790,22 +854,24 @@ def _build_review_checklist(
 
 
 def _context_counts(payload: AdminSourceDraftInput) -> tuple[int, int, int]:
+    active_records = _active_records()
     companion_hit_count = sum(
         1
-        for record in LEGAL_SOURCES
+        for record in active_records
         if record.law_name == payload.law_name and record.section_number in payload.related_sections
     )
     same_group_context_count = sum(
-        1 for record in LEGAL_SOURCES if payload.offence_group and record.offence_group == payload.offence_group
+        1 for record in active_records if payload.offence_group and record.offence_group == payload.offence_group
     )
-    same_law_context_count = sum(1 for record in LEGAL_SOURCES if record.law_name == payload.law_name)
+    same_law_context_count = sum(1 for record in active_records if record.law_name == payload.law_name)
     return companion_hit_count, same_group_context_count, same_law_context_count
 
 
 def review_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftReviewResponse:
     normalized = _normalize_draft(payload)
     issues, related_section_check = _validate_draft(normalized)
-    existing_record = _record_index().get(normalized.id) if normalized.id else None
+    active_records = _active_records()
+    existing_record = _record_index(active_records).get(normalized.id) if normalized.id else None
     changed_fields = _compare_draft_fields(normalized, existing_record)
     checklist = _build_review_checklist(normalized, issues, related_section_check, changed_fields)
 
@@ -836,7 +902,7 @@ def review_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraf
         changed_fields=[item for item in changed_fields if item.changed],
         checklist=checklist,
         workflow_note=(
-            "This review gate is still prototype-only. It compares the working draft against the live in-memory record, surfaces blockers and review warnings, and prepares the draft for a later real approval or publish workflow without persisting any change yet."
+            "This review gate is still prototype-only. It compares the working draft against the active live record from the current admin source store, surfaces blockers and review warnings, and prepares the draft for a later real approval or publish workflow without persisting any change yet."
         ),
     )
 
@@ -844,7 +910,8 @@ def review_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraf
 def build_admin_source_publish_preview(payload: AdminSourceDraftInput) -> AdminSourcePublishPreviewResponse:
     normalized = _normalize_draft(payload)
     issues, _related_section_check = _validate_draft(normalized)
-    existing_record = _record_index().get(normalized.id) if normalized.id else None
+    active_records = _active_records()
+    existing_record = _record_index(active_records).get(normalized.id) if normalized.id else None
     changed_fields = _compare_draft_fields(normalized, existing_record)
     blocker_messages = _collect_issue_messages(issues, level="error")
     warning_messages = _collect_issue_messages(issues, level="warning")
@@ -883,7 +950,7 @@ def build_admin_source_publish_preview(payload: AdminSourceDraftInput) -> AdminS
         recommended_actions=recommended_actions,
         changed_fields=[item for item in changed_fields if item.changed],
         workflow_note=(
-            "This publish preview does not mutate the live catalog. It estimates how the draft would land inside the current prototype source library so an admin can review impact, context, and remaining risks before real persistence exists."
+            "This publish preview does not mutate the live catalog. It estimates how the draft would land inside the current admin source store so an admin can review impact, context, and remaining risks before full persistence workflows exist."
         ),
     )
 
@@ -1139,6 +1206,7 @@ def publish_admin_workspace_package(package_id: str) -> AdminPublishExecutionRes
     payload: AdminSourceDraftInput = _normalize_draft(package_entry["payload"])
     target_record_id = package.target_record_id if package.publish_mode == "update_existing_record" else None
     published_record = _upsert_live_record(payload, target_record_id=target_record_id)
+    persisted_sync_applied = upsert_persisted_legal_source(published_record)
 
     activity = _log_activity(
         kind="publish",
@@ -1171,7 +1239,7 @@ def publish_admin_workspace_package(package_id: str) -> AdminPublishExecutionRes
         citation_label=published_record.citation_label,
         publish_mode=package.publish_mode,
         changed_field_count=package.changed_field_count,
-        catalog_record_count=len(LEGAL_SOURCES),
+        catalog_record_count=len(_active_records()),
         activity=activity,
         workflow_note=(
             "This publish action updated the live in-memory source catalog for the current server session, so admin summary, source catalog, and source detail views can refresh immediately. "
