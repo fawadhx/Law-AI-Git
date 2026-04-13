@@ -58,3 +58,32 @@ class AdminSourceCatalogResponse(BaseModel):
     available_groups: list[str]
     available_kinds: list[str]
     workflow_note: str
+
+
+class AdminLinkedRecord(BaseModel):
+    id: str
+    citation_label: str
+    law_name: str
+    section_number: str
+    section_title: str
+    provision_kind: str
+    relationship_label: str
+    summary: str
+
+
+class AdminSourceDetailRecord(AdminSourceRecord):
+    excerpt: str
+    aliases: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    searchable_terms: list[str] = Field(default_factory=list)
+    related_record_count: int = 0
+    same_group_record_count: int = 0
+    same_law_record_count: int = 0
+
+
+class AdminSourceDetailResponse(BaseModel):
+    item: AdminSourceDetailRecord
+    companion_records: list[AdminLinkedRecord] = Field(default_factory=list)
+    same_group_records: list[AdminLinkedRecord] = Field(default_factory=list)
+    same_law_records: list[AdminLinkedRecord] = Field(default_factory=list)
+    workflow_note: str
