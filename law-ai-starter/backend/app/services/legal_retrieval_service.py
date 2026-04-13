@@ -258,6 +258,40 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "wrongful gain online",
         "otp scam",
     ],
+    "civil": [
+        "civil dispute",
+        "family matter",
+        "divorce",
+        "khula",
+        "marriage",
+        "inheritance",
+        "maintenance",
+        "child custody",
+        "rent",
+        "tenant",
+        "landlord",
+        "eviction",
+        "ownership dispute",
+        "partition",
+        "agreement",
+        "contract",
+        "debt",
+        "loan dispute",
+        "salary issue",
+        "employment dispute",
+    ],
+    "officer_authority": [
+        "sho",
+        "asi",
+        "inspector",
+        "sub inspector",
+        "police powers",
+        "officer authority",
+        "rank powers",
+        "can arrest",
+        "can detain",
+        "can register fir",
+    ],
     "police": [
         "police",
         "officer",
@@ -305,6 +339,14 @@ PHRASE_HINTS: dict[str, list[str]] = {
     "touched her": ["modesty", "harassment"],
     "leak my photos": ["privacy", "harassment", "online", "threat"],
     "private photos": ["privacy", "harassment", "online"],
+    "can sho arrest": ["officer_authority", "police", "arrest"],
+    "can asi arrest": ["officer_authority", "police", "arrest"],
+    "inspector powers": ["officer_authority", "police"],
+    "tenant dispute": ["civil"],
+    "landlord dispute": ["civil"],
+    "divorce issue": ["civil"],
+    "inheritance dispute": ["civil"],
+    "property ownership dispute": ["civil"],
 }
 
 
@@ -327,6 +369,8 @@ THREAT_HINTS = ["threat", "threaten", "intimidation", "blackmail", "alarm", "lea
 HARASSMENT_HINTS = ["harassment", "stalking", "modesty", "privacy intrusion", "unwanted contact", "photos", "video"]
 ASSAULT_HINTS = ["assault", "slap", "slapped", "push", "pushed", "hit", "beating", "beat", "attacked", "grabbed"]
 FORCE_HINTS = ["force", "gunpoint", "weapon", "armed", "violence", "grabbed", "pushed"]
+CIVIL_HINTS = ["civil", "divorce", "khula", "marriage", "inheritance", "maintenance", "custody", "rent", "tenant", "landlord", "eviction", "ownership", "partition", "agreement", "contract", "debt", "salary", "employment"]
+OFFICER_AUTHORITY_HINTS = ["sho", "asi", "inspector", "sub inspector", "officer authority", "police powers", "can arrest", "can detain", "can register fir", "rank powers"]
 
 
 PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
@@ -439,6 +483,9 @@ def build_query_signals(query: str) -> dict[str, bool]:
         "harassment": any(word in query_lower for word in HARASSMENT_HINTS),
         "assault": any(word in query_lower for word in ASSAULT_HINTS),
         "force": any(word in query_lower for word in FORCE_HINTS),
+        "civil": any(word in query_lower for word in CIVIL_HINTS),
+        "officer_authority": any(word in query_lower for word in OFFICER_AUTHORITY_HINTS),
+        "officer_rank": any(word in query_lower for word in ["sho", "asi", "inspector", "sub inspector", "sub-inspector"]),
         "mentions_money": "money" in query_lower,
         "mentions_woman": any(word in query_lower for word in ["woman", "women", "girl", "female", "wife", "lady"]),
         "mentions_photo": any(word in query_lower for word in ["photo", "photos", "video", "picture", "images"]),
@@ -547,6 +594,20 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     searchable_text = normalize_text(" ".join(record.searchable_parts))
     searchable_tokens = set(tokenize(searchable_text))
     score = 0
+    civil_only = signals["civil"] and not any(
+        [
+            signals["online"],
+            signals["police"],
+            signals["threat"],
+            signals["harassment"],
+            signals["assault"],
+            signals["trespass"],
+            signals["fraud"],
+            signals["mischief"],
+            signals["restraint"],
+            signals["confinement"],
+        ]
+    )
 
     for term in query_terms:
         if " " in term:
@@ -596,6 +657,12 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     elif not signals["police"] and record.offence_group == "criminal_procedure":
         score -= 5
 
+    if signals["officer_rank"] and signals["police"] and record.section_number in {"46", "54", "61"}:
+        score += 8
+
+    if signals["officer_authority"] and record.law_name == "Code of Criminal Procedure":
+        score += 3
+
     if signals["property"] and record.offence_group in {"theft_offence", "breach_of_trust_offence", "trespass_offence"}:
         score += 2
 
@@ -613,6 +680,28 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
 
     if signals["house_context"] and signals["trespass"] and record.section_number in {"441", "447"}:
         score += 2
+
+    if civil_only and record.offence_group in {
+        "theft_offence",
+        "breach_of_trust_offence",
+        "fraud_offence",
+        "violent_property_offence",
+        "threat_offence",
+        "harassment_offence",
+        "assault_offence",
+        "property_damage_offence",
+        "restraint_offence",
+        "trespass_offence",
+        "cyber_offence",
+        "cyber_identity_offence",
+    }:
+        score -= 10
+
+    if signals["civil"] and not signals["trespass"] and record.offence_group == "trespass_offence":
+        score -= 4
+
+    if signals["civil"] and not signals["fraud"] and record.offence_group in {"fraud_offence", "breach_of_trust_offence"}:
+        score -= 3
 
     if signals["extortion"] and record.offence_group == "violent_property_offence":
         score += 5
@@ -958,6 +1047,24 @@ def select_contextual_records(
 
 def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int, LegalSourceRecord]]:
     all_results: list[tuple[int, LegalSourceRecord]] = []
+    signals = build_query_signals(query)
+    civil_only = signals["civil"] and not any(
+        [
+            signals["online"],
+            signals["police"],
+            signals["threat"],
+            signals["harassment"],
+            signals["assault"],
+            signals["trespass"],
+            signals["fraud"],
+            signals["mischief"],
+            signals["restraint"],
+            signals["confinement"],
+        ]
+    )
+    pure_officer_query = signals["officer_rank"] and signals["officer_authority"] and not any(
+        [signals["police"], signals["section_lookup"], signals["threat"], signals["online"], signals["fraud"]]
+    )
 
     for record in LEGAL_SOURCES:
         score = score_record(query, record)
@@ -965,6 +1072,14 @@ def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int,
             all_results.append((score, record))
 
     all_results.sort(key=lambda item: sort_key_for_record(item, query), reverse=True)
+
+    if civil_only:
+        if not all_results or all_results[0][0] < 18:
+            return []
+
+    if pure_officer_query:
+        if not all_results or all_results[0][0] < 14:
+            return []
 
     return select_contextual_records(query, all_results, limit)
 
@@ -1019,6 +1134,12 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
 
     if signals["police"] and record.law_name == "Code of Criminal Procedure":
         reasons.append("Police or detention wording in the question aligns with criminal-procedure provisions.")
+
+    if signals["officer_rank"] and record.section_number in {"46", "54", "61"}:
+        reasons.append("The query mentions a police rank together with arrest or detention powers, so criminal-procedure sections were prioritized.")
+
+    if signals["civil"] and not any([signals["online"], signals["police"], signals["threat"], signals["assault"], signals["harassment"]]):
+        reasons.append("The query also contains civil or family-dispute wording, so this match should be treated cautiously because prototype coverage is limited there.")
 
     if signals["house_context"] and signals["trespass"] and record.section_number in {"442", "448"}:
         reasons.append("The query points to a house or home entry situation, which aligns with house-trespass provisions.")

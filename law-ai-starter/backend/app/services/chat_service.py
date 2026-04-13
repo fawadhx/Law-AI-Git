@@ -8,6 +8,7 @@ from app.schemas.chat import (
     Citation,
     MatchExplanation,
 )
+from app.data.officer_authority import OFFICER_AUTHORITY_DATA
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_classification_service import detect_question_category
 from app.services.legal_retrieval_service import (
@@ -24,6 +25,145 @@ LEGAL_DISCLAIMER = (
 )
 
 PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
+
+
+OFFICER_RANK_ALIASES = {
+    "sho": "sho",
+    "station house officer": "sho",
+    "asi": "asi",
+    "assistant sub inspector": "asi",
+    "assistant sub-inspector": "asi",
+    "inspector": "inspector",
+}
+
+
+def detect_officer_rank(question: str) -> str | None:
+    lower = question.strip().lower()
+    for phrase, rank in OFFICER_RANK_ALIASES.items():
+        if phrase in lower:
+            return rank
+    return None
+
+
+
+
+def is_pure_officer_authority_query(question: str) -> bool:
+    lower = question.strip().lower()
+    rank = detect_officer_rank(question)
+    if not rank:
+        return False
+
+    authority_terms = ["power", "powers", "authority", "rank", "jurisdiction", "can register fir", "officer authority"]
+    procedure_terms = ["arrest", "detain", "detention", "custody", "warrant", "without warrant", "24 hours"]
+
+    return any(term in lower for term in authority_terms) and not any(term in lower for term in procedure_terms)
+
+
+def build_officer_authority_note(rank_key: str) -> str | None:
+    record = OFFICER_AUTHORITY_DATA.get(rank_key)
+    if not record:
+        return None
+
+    lines = [
+        f"Officer-rank note: {record['rank']}",
+        record["summary"],
+        "Typical prototype powers:",
+    ]
+    for power in record["powers"]:
+        lines.append(f"- {power}")
+
+    lines.append("Prototype limitations:")
+    for limitation in record["limitations"]:
+        lines.append(f"- {limitation}")
+
+    return "\n".join(lines)
+
+
+def build_scope_boundary_note(question: str, category_key: str) -> str | None:
+    lower = question.strip().lower()
+    civil_terms = [
+        "civil",
+        "divorce",
+        "khula",
+        "marriage",
+        "nikah",
+        "inheritance",
+        "maintenance",
+        "custody",
+        "rent",
+        "tenant",
+        "landlord",
+        "eviction",
+        "ownership",
+        "partition",
+        "agreement",
+        "contract",
+        "debt",
+        "salary",
+        "employment",
+    ]
+
+    if category_key == "civil_family" or any(term in lower for term in civil_terms):
+        return (
+            "Current prototype scope note: the dataset is presently strongest for criminal-law, PECA, arrest/detention, "
+            "and officer-authority public-awareness questions. Civil, family, tenancy, inheritance, contract, and broader "
+            "property-rights coverage is still limited."
+        )
+
+    return None
+
+
+
+
+def is_limited_civil_scope_query(question: str) -> bool:
+    lower = question.strip().lower()
+    civil_terms = [
+        "civil",
+        "divorce",
+        "khula",
+        "marriage",
+        "nikah",
+        "inheritance",
+        "maintenance",
+        "custody",
+        "rent",
+        "tenant",
+        "landlord",
+        "eviction",
+        "ownership",
+        "partition",
+        "agreement",
+        "contract",
+        "debt",
+        "salary",
+        "employment",
+    ]
+    criminal_terms = [
+        "theft",
+        "steal",
+        "fraud",
+        "420",
+        "threat",
+        "blackmail",
+        "assault",
+        "slap",
+        "push",
+        "harassment",
+        "stalking",
+        "online",
+        "cyber",
+        "arrest",
+        "warrant",
+        "detention",
+        "detain",
+        "illegal entry",
+        "trespass",
+        "entered my house",
+        "entered my plot",
+        "damage",
+        "mischief",
+    ]
+    return any(term in lower for term in civil_terms) and not any(term in lower for term in criminal_terms)
 
 
 def build_answer_intent(question: str) -> dict[str, bool]:
@@ -198,8 +338,12 @@ def build_category_guidance(category_key: str) -> str:
             "The system usually checks criminal-procedure provisions such as manner of arrest, warrant rules, and detention limits."
         ),
         "officer_authority": (
-            "This appears to concern police rank, authority, or powers. "
-            "The system usually checks structured officer-authority records rather than only offence provisions."
+            "This appears to concern police rank, authority, powers, or whether a rank may act in a certain way. "
+            "The system may combine structured officer-authority notes with CrPC arrest/detention provisions where the question also asks about warrant, custody, or police procedure."
+        ),
+        "civil_family": (
+            "This appears to involve a civil, family, tenancy, inheritance, contract, or broader property-rights issue. "
+            "Current prototype coverage in that area is limited, so answers should be read very cautiously and may require later dataset expansion."
         ),
         "general": (
             "This appears to be a broader legal-information question. "
@@ -324,6 +468,8 @@ def build_rephrase_suggestions(question: str, category_key: str) -> list[str]:
 
     if signals["section_lookup"]:
         suggestions.append("Ask with both the law and section, for example: What does PPC section 448 cover?")
+    if category_key == "civil_family" or signals.get("civil"):
+        suggestions.append("Mention the issue type clearly, for example: tenancy dispute, inheritance share, divorce, child custody, contract breach, or salary issue.")
     if category_key == "trespass" or signals["house_context"]:
         suggestions.append("Mention whether it was a house/home entry, plot entry, or staying on property after being asked to leave.")
     if category_key == "assault_force" or signals["assault"]:
@@ -334,6 +480,8 @@ def build_rephrase_suggestions(question: str, category_key: str) -> list[str]:
         suggestions.append("Mention whether the issue involved a fake profile, CNIC misuse, account access, digital evidence, or an online scam.")
     if category_key == "robbery_extortion" or signals["threat"]:
         suggestions.append("Mention whether property was taken, money was demanded, or force or fear was used.")
+    if category_key == "officer_authority" or signals.get("officer_authority") or signals.get("officer_rank"):
+        suggestions.append("Mention the rank clearly, such as SHO, ASI, or Inspector, and whether you are asking about arrest, detention, FIR handling, or general authority.")
     if not suggestions:
         suggestions.extend(
             [
@@ -364,11 +512,14 @@ def build_no_match_answer(
     section_note = ""
     if extract_section_references(question):
         section_note = "The question appears to ask about a specific section, but that exact section could not be confidently resolved from the current prototype records.\n\n"
+    scope_note = build_scope_boundary_note(question, category["key"])
+    scope_block = f"{scope_note}\n\n" if scope_note else ""
 
     return (
         "No strong legal-source match was found in the current prototype dataset.\n\n"
         f"Confidence level: {confidence.level.upper()}\n\n"
         f"{section_note}"
+        f"{scope_block}"
         "What this means:\n"
         "- The system could not confidently map your question to the current internal legal records.\n"
         "- This does not mean no law applies. It only means the current prototype dataset is still limited.\n\n"
@@ -402,6 +553,7 @@ def build_weak_match_answer(
     confidence: ChatConfidence,
 ) -> str:
     section_note = build_specific_section_note(question, records)
+    scope_note = build_scope_boundary_note(question, category["key"])
     lines = [
         "Closest currently available legal information",
         "",
@@ -415,6 +567,9 @@ def build_weak_match_answer(
 
     if section_note:
         lines.extend(["", "Section-note guidance:", section_note])
+
+    if scope_note:
+        lines.extend(["", "Scope note:", scope_note])
 
     for record in records[:3]:
         lines.append(build_record_reference(record))
@@ -470,6 +625,9 @@ def build_match_answer(
 ) -> str:
     primary, main_related_records, support_records = split_records(question, records)
     intent = build_answer_intent(question)
+    scope_note = build_scope_boundary_note(question, category["key"])
+    officer_rank = detect_officer_rank(question)
+    officer_note = build_officer_authority_note(officer_rank) if officer_rank else None
 
     if confidence.level == "high":
         opening = "A strong current match was found in the prototype dataset."
@@ -495,6 +653,12 @@ def build_match_answer(
     section_note = build_specific_section_note(question, records)
     if section_note:
         lines.extend(["", "Section-note guidance:", section_note])
+
+    if officer_note and (category["key"] == "officer_authority" or "police" in question.lower() or "arrest" in question.lower() or "warrant" in question.lower() or "detain" in question.lower() or "detention" in question.lower() or "custody" in question.lower()):
+        lines.extend(["", officer_note])
+
+    if scope_note:
+        lines.extend(["", "Scope note:", scope_note])
 
     overlap_note = summarize_overlap(records)
     if overlap_note:
@@ -531,6 +695,78 @@ def build_match_answer(
     return "\n".join(lines)
 
 
+
+def build_officer_only_answer(
+    question: str,
+    category: dict[str, str],
+    confidence: ChatConfidence,
+    rank_key: str,
+) -> str:
+    officer_note = build_officer_authority_note(rank_key)
+    scope_note = build_scope_boundary_note(question, category["key"])
+
+    lines = [
+        "Matched legal-information note",
+        "",
+        f"Confidence level: {confidence.level.upper()}",
+        "",
+    ]
+
+    if officer_note:
+        lines.extend([officer_note, ""])
+
+    lines.extend(
+        [
+            "Issue-type guidance:",
+            build_category_guidance(category["key"]),
+        ]
+    )
+
+    if scope_note:
+        lines.extend(["", "Scope note:", scope_note])
+
+    lines.extend(
+        [
+            "",
+            "Current prototype note:",
+            "This officer-rank response comes from the prototype's structured officer-authority records and is general legal information only.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_officer_why_matched(rank_key: str) -> list[MatchExplanation]:
+    record = OFFICER_AUTHORITY_DATA.get(rank_key)
+    if not record:
+        return []
+
+    return [
+        MatchExplanation(
+            title=f"{record['rank']} — Officer authority prototype record",
+            points=[
+                f"Direct police-rank mention matched: {record['rank']}.",
+                "The question was routed to structured officer-authority data.",
+                "Officer authority notes remain subject to procedural law and legal limits.",
+            ],
+        )
+    ]
+
+
+def build_officer_citations(rank_key: str) -> list[Citation]:
+    record = OFFICER_AUTHORITY_DATA.get(rank_key)
+    if not record:
+        return []
+
+    return [
+        Citation(
+            title="Officer Authority Prototype",
+            section=record["rank"],
+            note="Structured rank summary and authority limitations",
+            excerpt=record["summary"],
+        )
+    ]
+
+
 def build_answer(
     question: str,
     scored_records: list[tuple[int, LegalSourceRecord]],
@@ -538,7 +774,18 @@ def build_answer(
     category: dict[str, str],
     confidence: ChatConfidence,
 ) -> str:
+    rank_key = detect_officer_rank(question)
+    if is_pure_officer_authority_query(question) and rank_key:
+        return build_officer_only_answer(
+            question,
+            {"key": "officer_authority", "label": "Police Rank / Officer Authority"},
+            confidence,
+            rank_key,
+        )
+
     if not records:
+        if category["key"] == "officer_authority" and rank_key:
+            return build_officer_only_answer(question, category, confidence, rank_key)
         return build_no_match_answer(question, category, confidence)
 
     if confidence.level == "low" and scored_records and scored_records[0][0] < 8:
@@ -553,10 +800,31 @@ def generate_mock_legal_response(question: str) -> ChatQueryResponse:
 
     detected_category = detect_question_category(question, records)
     confidence = determine_confidence(scored_records)
+    officer_rank = detect_officer_rank(question)
+
+    if is_pure_officer_authority_query(question) and officer_rank:
+        detected_category = {
+            "key": "officer_authority",
+            "label": "Police Rank / Officer Authority",
+        }
+
+    if is_limited_civil_scope_query(question) and (not scored_records or scored_records[0][0] < 18):
+        scored_records = []
+        records = []
+        confidence = ChatConfidence(level="low", score=0, matched_records=0)
+        detected_category = {
+            "key": "civil_family",
+            "label": "Civil / Family / Property / Contract (Limited Prototype Coverage)",
+        }
 
     answer = build_answer(question, scored_records, records, detected_category, confidence)
-    citations = build_citations(records)
-    why_matched = build_why_matched(question, records)
+
+    if (not records and detected_category["key"] == "officer_authority" and officer_rank) or is_pure_officer_authority_query(question):
+        citations = build_officer_citations(officer_rank) if officer_rank else []
+        why_matched = build_officer_why_matched(officer_rank) if officer_rank else []
+    else:
+        citations = build_citations(records)
+        why_matched = build_why_matched(question, records)
 
     return ChatQueryResponse(
         answer=answer,

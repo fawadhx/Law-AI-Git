@@ -224,6 +224,38 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
             "police powers",
         ],
     },
+
+    "civil_family": {
+        "label": "Civil / Family / Property / Contract (Limited Prototype Coverage)",
+        "keywords": [
+            "civil",
+            "family matter",
+            "family dispute",
+            "divorce",
+            "khula",
+            "marriage",
+            "nikah",
+            "inheritance",
+            "maintenance",
+            "custody of child",
+            "child custody",
+            "rent",
+            "tenant",
+            "landlord",
+            "eviction",
+            "ownership dispute",
+            "partition",
+            "property ownership",
+            "property share",
+            "agreement",
+            "contract",
+            "breach of contract",
+            "loan dispute",
+            "debt",
+            "salary issue",
+            "employment dispute",
+        ],
+    },
     "general": {
         "label": "General Legal Information",
         "keywords": [],
@@ -258,6 +290,10 @@ def extract_section_numbers(question: str) -> set[str]:
     query = normalize_text(question)
     matches = re.findall(r"\b(?:section\s+)?(\d+[a-z]?)\b", query)
     return {match.upper() for match in matches}
+
+
+def contains_any(query: str, phrases: list[str]) -> bool:
+    return any(normalize_text(phrase) in query for phrase in phrases)
 
 
 SECTION_CATEGORY_HINTS = {
@@ -309,6 +345,38 @@ def detect_question_category(
     query = normalize_text(question)
     mentioned_sections = extract_section_numbers(question)
     scores: dict[str, int] = {key: 0 for key in CATEGORY_CONFIG.keys()}
+    authority_terms = [
+        "power",
+        "powers",
+        "authority",
+        "can arrest",
+        "can detain",
+        "can register fir",
+        "rank",
+        "jurisdiction",
+    ]
+    civil_terms = [
+        "civil",
+        "divorce",
+        "khula",
+        "marriage",
+        "nikah",
+        "inheritance",
+        "maintenance",
+        "custody",
+        "rent",
+        "tenant",
+        "landlord",
+        "eviction",
+        "ownership",
+        "partition",
+        "agreement",
+        "contract",
+        "loan dispute",
+        "debt",
+        "salary",
+        "employment",
+    ]
 
     for category_key, config in CATEGORY_CONFIG.items():
         for keyword in config["keywords"]:
@@ -373,6 +441,39 @@ def detect_question_category(
     ):
         scores["trespass"] += 8
 
+
+    rank_mentioned = any(term in query for term in ["sho", "asi", "inspector", "sub inspector", "sub-inspector"])
+    if rank_mentioned and contains_any(query, authority_terms):
+        scores["officer_authority"] += 12
+        scores["arrest_detention"] += 3
+
+    if rank_mentioned and any(term in query for term in ["arrest", "detain", "custody", "warrant", "without warrant"]):
+        scores["officer_authority"] += 8
+        scores["arrest_detention"] += 8
+
+    civil_score = sum(1 for term in civil_terms if term in query)
+    if civil_score:
+        scores["civil_family"] += civil_score * 4
+
+    if scores["civil_family"] > 0 and not any(
+        scores[key] > 0 for key in [
+            "theft",
+            "cheating_fraud",
+            "robbery_extortion",
+            "criminal_intimidation",
+            "defamation",
+            "harassment",
+            "assault_force",
+            "cybercrime",
+            "trespass",
+            "restraint_confinement",
+            "property_damage",
+            "arrest_detention",
+            "officer_authority",
+        ]
+    ):
+        scores["civil_family"] += 6
+
     if "punishment" in query and "theft" in query:
         scores["theft"] += 8
     if "punishment" in query and any(term in query for term in ["cheating", "fraud", "420", "trust", "amanat", "khayanat"]):
@@ -420,6 +521,14 @@ def detect_question_category(
         if "money" in query and record.section_number in {"383", "384", "390", "392"}:
             scores["robbery_extortion"] += 4
 
+
+    if rank_mentioned and any(record.section_number in {"46", "54", "61"} for record in records or []):
+        scores["officer_authority"] += 6
+        scores["arrest_detention"] += 4
+
+    if scores["civil_family"] > 0 and not records:
+        scores["civil_family"] += 2
+
     if scores["harassment"] > 0 and scores["cybercrime"] > 0 and (
         "online" in query or "cyber" in query or "social media" in query or "photos" in query or "photo" in query
     ):
@@ -444,7 +553,21 @@ def detect_question_category(
     ):
         scores["cybercrime"] += 4
 
-    best_category = max(scores, key=scores.get)
+
+    pure_officer_query = rank_mentioned and contains_any(query, authority_terms) and not any(
+        term in query for term in ["arrest", "detain", "detention", "custody", "warrant", "without warrant"]
+    )
+
+    if pure_officer_query:
+        best_category = "officer_authority"
+    elif scores["civil_family"] >= 10 and scores["civil_family"] >= max(
+        scores["general"],
+        scores["trespass"] + 2,
+        scores["cheating_fraud"] + 2,
+    ):
+        best_category = "civil_family"
+    else:
+        best_category = max(scores, key=scores.get)
     if scores[best_category] <= 0:
         best_category = "general"
 
