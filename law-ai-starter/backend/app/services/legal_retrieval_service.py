@@ -102,6 +102,29 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "illegal detention",
         "kept in custody",
     ],
+    "fir": [
+        "fir",
+        "first information report",
+        "register fir",
+        "registration of fir",
+        "police complaint",
+        "complaint to police",
+        "sho refusing fir",
+        "police not registering fir",
+        "cognizable case",
+        "cognizable offence",
+        "non-cognizable",
+        "non cognizable",
+    ],
+    "investigation": [
+        "investigation",
+        "investigate",
+        "investigating",
+        "inquiry",
+        "probe",
+        "power to investigate",
+        "investigate cognizable case",
+    ],
     "unauthorized_access": [
         "unauthorised access",
         "unauthorized access",
@@ -342,6 +365,12 @@ PHRASE_HINTS: dict[str, list[str]] = {
     "can sho arrest": ["officer_authority", "police", "arrest"],
     "can asi arrest": ["officer_authority", "police", "arrest"],
     "inspector powers": ["officer_authority", "police"],
+    "register fir": ["fir", "officer_authority", "police"],
+    "fir not registered": ["fir", "police"],
+    "sho refusing fir": ["fir", "officer_authority", "police"],
+    "non cognizable": ["fir", "investigation", "police"],
+    "non-cognizable": ["fir", "investigation", "police"],
+    "investigate cognizable case": ["fir", "investigation", "police"],
     "tenant dispute": ["civil"],
     "landlord dispute": ["civil"],
     "divorce issue": ["civil"],
@@ -352,7 +381,7 @@ PHRASE_HINTS: dict[str, list[str]] = {
 
 PUNISHMENT_HINTS = ["punishment", "penalty", "sentence", "fine", "jail", "imprisonment", "saza"]
 ONLINE_HINTS = ["online", "internet", "cyber", "social media", "facebook", "instagram", "whatsapp", "tiktok"]
-POLICE_HINTS = ["police", "arrest", "detain", "custody", "warrant"]
+POLICE_HINTS = ["police", "arrest", "detain", "custody", "warrant", "fir", "complaint", "investigation"]
 PROPERTY_HINTS = ["property", "money", "land", "plot", "phone", "wallet", "entrusted", "house", "home"]
 FRAUD_HINTS = ["cheat", "cheated", "cheating", "fraud", "scam", "deceive", "deceived", "deal", "property deal", "420", "trust", "entrusted", "amanat", "khayanat"]
 TRESPASS_HINTS = ["trespass", "illegal entry", "unlawful entry", "plot", "entered", "enter", "land", "leave", "house", "home", "break into"]
@@ -369,6 +398,8 @@ THREAT_HINTS = ["threat", "threaten", "intimidation", "blackmail", "alarm", "lea
 HARASSMENT_HINTS = ["harassment", "stalking", "modesty", "privacy intrusion", "unwanted contact", "photos", "video"]
 ASSAULT_HINTS = ["assault", "slap", "slapped", "push", "pushed", "hit", "beating", "beat", "attacked", "grabbed"]
 FORCE_HINTS = ["force", "gunpoint", "weapon", "armed", "violence", "grabbed", "pushed"]
+FIR_HINTS = ["fir", "first information report", "register fir", "registration of fir", "police complaint", "complaint to police", "sho refusing fir", "police not registering fir", "cognizable", "non-cognizable", "non cognizable"]
+INVESTIGATION_HINTS = ["investigation", "investigate", "investigating", "inquiry", "probe", "power to investigate"]
 CIVIL_HINTS = ["civil", "divorce", "khula", "marriage", "inheritance", "maintenance", "custody", "rent", "tenant", "landlord", "eviction", "ownership", "partition", "agreement", "contract", "debt", "salary", "employment"]
 OFFICER_AUTHORITY_HINTS = ["sho", "asi", "inspector", "sub inspector", "officer authority", "police powers", "can arrest", "can detain", "can register fir", "rank powers"]
 
@@ -483,6 +514,10 @@ def build_query_signals(query: str) -> dict[str, bool]:
         "harassment": any(word in query_lower for word in HARASSMENT_HINTS),
         "assault": any(word in query_lower for word in ASSAULT_HINTS),
         "force": any(word in query_lower for word in FORCE_HINTS),
+        "fir": any(word in query_lower for word in FIR_HINTS),
+        "investigation": any(word in query_lower for word in INVESTIGATION_HINTS),
+        "non_cognizable": "non-cognizable" in query_lower or "non cognizable" in query_lower or "nc report" in query_lower or "nc case" in query_lower,
+        "cognizable": "cognizable" in query_lower,
         "civil": any(word in query_lower for word in CIVIL_HINTS),
         "officer_authority": any(word in query_lower for word in OFFICER_AUTHORITY_HINTS),
         "officer_rank": any(word in query_lower for word in ["sho", "asi", "inspector", "sub inspector", "sub-inspector"]),
@@ -654,14 +689,46 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
 
     if signals["police"] and record.law_name == "Code of Criminal Procedure":
         score += 5
+
+    if signals["fir"] and record.section_number in {"154", "155", "156"}:
+        score += 10
+
+    if signals["investigation"] and record.section_number == "156":
+        score += 8
+
+    if signals["non_cognizable"] and record.section_number == "155":
+        score += 14
+    elif signals["non_cognizable"] and record.section_number in {"154", "156"}:
+        score -= 6
+
+    if signals["cognizable"] and record.section_number in {"154", "156"}:
+        score += 6
+
+    if signals["officer_rank"] and signals["fir"] and record.section_number == "154":
+        score += 8
     elif not signals["police"] and record.offence_group == "criminal_procedure":
         score -= 5
 
-    if signals["officer_rank"] and signals["police"] and record.section_number in {"46", "54", "61"}:
+    if signals["officer_rank"] and signals["police"] and record.section_number in {"46", "54", "61", "154", "155", "156"}:
         score += 8
 
     if signals["officer_authority"] and record.law_name == "Code of Criminal Procedure":
         score += 3
+
+    if "register fir" in query_lower and record.section_number == "154":
+        score += 12
+
+    if any(phrase in query_lower for phrase in ["fir not registered", "police not registering fir", "sho refusing fir", "refused to register fir"]):
+        if record.section_number == "154":
+            score += 12
+        elif record.section_number == "155":
+            score += 4
+
+    if any(phrase in query_lower for phrase in ["non-cognizable", "non cognizable", "nc report", "nc case"]) and record.section_number == "155":
+        score += 12
+
+    if any(phrase in query_lower for phrase in ["investigate", "investigation", "power to investigate"]) and record.section_number == "156":
+        score += 8
 
     if signals["property"] and record.offence_group in {"theft_offence", "breach_of_trust_offence", "trespass_offence"}:
         score += 2
@@ -899,6 +966,9 @@ def should_include_overlap(
     if candidate_record.offence_group == primary_record.offence_group and candidate_record.law_name == primary_record.law_name:
         return False
 
+    if signals["trespass"] and signals["mischief"]:
+        return candidate_score >= 12 and candidate_record.section_number in {"441", "447", "442", "448", "425", "426"}
+
     if candidate_score < max(8, top_score - 8):
         return False
 
@@ -907,6 +977,9 @@ def should_include_overlap(
 
     if signals["online"] and signals["harassment"]:
         return candidate_record.section_number in {"24", "509", "20", "21"}
+
+    if signals["fir"] or signals["investigation"]:
+        return candidate_record.section_number in {"154", "155", "156"}
 
     if signals["identity"] and (signals["fraud"] or signals["electronic_forgery"] or signals["electronic_fraud"]):
         return candidate_record.section_number in {"13", "14", "16", "420"}
@@ -986,6 +1059,7 @@ def select_contextual_records(
             or (intent["section_lookup"] and any(ref in record.citation_label.lower() for ref in [primary.section_number.lower()]))
             or record.law_name != primary.law_name
             or (signals["house_context"] and record.section_number in {"448", "447"})
+            or (signals["fir"] and record.section_number in {"154", "155", "156"})
         ):
             selected.append(item)
             selected_ids.add(record.id)
@@ -1135,8 +1209,14 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     if signals["police"] and record.law_name == "Code of Criminal Procedure":
         reasons.append("Police or detention wording in the question aligns with criminal-procedure provisions.")
 
-    if signals["officer_rank"] and record.section_number in {"46", "54", "61"}:
-        reasons.append("The query mentions a police rank together with arrest or detention powers, so criminal-procedure sections were prioritized.")
+    if signals["officer_rank"] and record.section_number in {"46", "54", "61", "154", "155", "156"}:
+        reasons.append("The query mentions a police rank together with procedure-related powers, so criminal-procedure sections were prioritized.")
+
+    if signals["fir"] and record.section_number in {"154", "155", "156"}:
+        reasons.append("The query asks about FIR registration, cognizable or non-cognizable procedure, or police reporting steps.")
+
+    if signals["investigation"] and record.section_number == "156":
+        reasons.append("The query asks about investigation powers, which aligns with cognizable-case investigation procedure.")
 
     if signals["civil"] and not any([signals["online"], signals["police"], signals["threat"], signals["assault"], signals["harassment"]]):
         reasons.append("The query also contains civil or family-dispute wording, so this match should be treated cautiously because prototype coverage is limited there.")

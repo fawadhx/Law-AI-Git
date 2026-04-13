@@ -54,7 +54,7 @@ def is_pure_officer_authority_query(question: str) -> bool:
         return False
 
     authority_terms = ["power", "powers", "authority", "rank", "jurisdiction", "can register fir", "officer authority"]
-    procedure_terms = ["arrest", "detain", "detention", "custody", "warrant", "without warrant", "24 hours"]
+    procedure_terms = ["arrest", "detain", "detention", "custody", "warrant", "without warrant", "24 hours", "fir", "register fir", "complaint", "investigation"]
 
     return any(term in lower for term in authority_terms) and not any(term in lower for term in procedure_terms)
 
@@ -337,6 +337,10 @@ def build_category_guidance(category_key: str) -> str:
             "This appears to involve arrest, detention, custody, or police procedure. "
             "The system usually checks criminal-procedure provisions such as manner of arrest, warrant rules, and detention limits."
         ),
+        "fir_reporting": (
+            "This appears to involve FIR registration, police complaint handling, cognizable or non-cognizable procedure, or investigation powers. "
+            "The system usually checks reporting and investigation provisions first, and may also surface officer-authority context where rank wording is included."
+        ),
         "officer_authority": (
             "This appears to concern police rank, authority, powers, or whether a rank may act in a certain way. "
             "The system may combine structured officer-authority notes with CrPC arrest/detention provisions where the question also asks about warrant, custody, or police procedure."
@@ -482,6 +486,8 @@ def build_rephrase_suggestions(question: str, category_key: str) -> list[str]:
         suggestions.append("Mention whether property was taken, money was demanded, or force or fear was used.")
     if category_key == "officer_authority" or signals.get("officer_authority") or signals.get("officer_rank"):
         suggestions.append("Mention the rank clearly, such as SHO, ASI, or Inspector, and whether you are asking about arrest, detention, FIR handling, or general authority.")
+    if category_key == "fir_reporting" or signals.get("fir") or signals.get("investigation"):
+        suggestions.append("Mention whether the issue is FIR registration, refusal to register, cognizable vs non-cognizable, or police investigation after complaint.")
     if not suggestions:
         suggestions.extend(
             [
@@ -553,6 +559,7 @@ def build_weak_match_answer(
     confidence: ChatConfidence,
 ) -> str:
     section_note = build_specific_section_note(question, records)
+    unresolved_section_note = build_unresolved_section_note(question, records)
     scope_note = build_scope_boundary_note(question, category["key"])
     lines = [
         "Closest currently available legal information",
@@ -567,6 +574,8 @@ def build_weak_match_answer(
 
     if section_note:
         lines.extend(["", "Section-note guidance:", section_note])
+    elif unresolved_section_note:
+        lines.extend(["", "Section-note guidance:", unresolved_section_note])
 
     if scope_note:
         lines.extend(["", "Scope note:", scope_note])
@@ -617,6 +626,23 @@ def build_specific_section_note(question: str, records: list[LegalSourceRecord])
     return None
 
 
+def build_unresolved_section_note(question: str, records: list[LegalSourceRecord]) -> str | None:
+    refs = extract_section_references(question)
+    if not refs:
+        return None
+
+    requested = {section for _, section in refs}
+    matched_sections = {record.section_number.upper() for record in records}
+    if requested & matched_sections:
+        return None
+
+    requested_list = ", ".join(sorted(requested))
+    return (
+        f"The query appears to ask about section {requested_list}, but that exact section was not confidently resolved in the current prototype dataset. "
+        "The answer below is therefore only a best-effort match using the closest available records."
+    )
+
+
 def build_match_answer(
     question: str,
     records: list[LegalSourceRecord],
@@ -651,10 +677,13 @@ def build_match_answer(
         lines.extend(["", f"Primary punishment note: {primary.punishment_summary}"])
 
     section_note = build_specific_section_note(question, records)
+    unresolved_section_note = build_unresolved_section_note(question, records)
     if section_note:
         lines.extend(["", "Section-note guidance:", section_note])
+    elif unresolved_section_note:
+        lines.extend(["", "Section-note guidance:", unresolved_section_note])
 
-    if officer_note and (category["key"] == "officer_authority" or "police" in question.lower() or "arrest" in question.lower() or "warrant" in question.lower() or "detain" in question.lower() or "detention" in question.lower() or "custody" in question.lower()):
+    if officer_note and (category["key"] in {"officer_authority", "fir_reporting"} or "police" in question.lower() or "arrest" in question.lower() or "warrant" in question.lower() or "detain" in question.lower() or "detention" in question.lower() or "custody" in question.lower() or "fir" in question.lower() or "complaint" in question.lower()):
         lines.extend(["", officer_note])
 
     if scope_note:

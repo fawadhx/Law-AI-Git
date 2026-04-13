@@ -211,6 +211,24 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
             "police",
         ],
     },
+    "fir_reporting": {
+        "label": "FIR / Police Reporting Procedure",
+        "keywords": [
+            "fir",
+            "first information report",
+            "register fir",
+            "registration of fir",
+            "police complaint",
+            "complaint to police",
+            "sho refusing fir",
+            "police not registering fir",
+            "cognizable",
+            "non-cognizable",
+            "non cognizable",
+            "investigation",
+            "investigate",
+        ],
+    },
     "officer_authority": {
         "label": "Police Rank / Officer Authority",
         "keywords": [
@@ -336,6 +354,9 @@ SECTION_CATEGORY_HINTS = {
     "46": "arrest_detention",
     "54": "arrest_detention",
     "61": "arrest_detention",
+    "154": "fir_reporting",
+    "155": "fir_reporting",
+    "156": "fir_reporting",
 }
 
 
@@ -447,9 +468,23 @@ def detect_question_category(
         scores["officer_authority"] += 12
         scores["arrest_detention"] += 3
 
+    if any(term in query for term in ["fir", "first information report", "register fir", "police complaint", "complaint to police"]):
+        scores["fir_reporting"] += 10
+        scores["arrest_detention"] += 2
+
+    if any(term in query for term in ["non-cognizable", "non cognizable", "nc report", "nc case"]):
+        scores["fir_reporting"] += 10
+
+    if any(term in query for term in ["investigation", "investigate", "power to investigate", "cognizable case"]):
+        scores["fir_reporting"] += 7
+
     if rank_mentioned and any(term in query for term in ["arrest", "detain", "custody", "warrant", "without warrant"]):
         scores["officer_authority"] += 8
         scores["arrest_detention"] += 8
+
+    if rank_mentioned and any(term in query for term in ["fir", "register fir", "complaint", "cognizable", "non-cognizable", "investigate"]):
+        scores["officer_authority"] += 6
+        scores["fir_reporting"] += 8
 
     civil_score = sum(1 for term in civil_terms if term in query)
     if civil_score:
@@ -497,6 +532,10 @@ def detect_question_category(
         if "criminal procedure" in law_name:
             scores["arrest_detention"] += 4
 
+        if record.section_number in {"154", "155", "156"}:
+            scores["fir_reporting"] += 7
+            scores["arrest_detention"] += 2
+
         if record.section_number in {"378", "379"}:
             scores["theft"] += 6
         if record.section_number in {"405", "406", "415", "417", "420"}:
@@ -522,9 +561,12 @@ def detect_question_category(
             scores["robbery_extortion"] += 4
 
 
-    if rank_mentioned and any(record.section_number in {"46", "54", "61"} for record in records or []):
+    if rank_mentioned and any(record.section_number in {"46", "54", "61", "154", "155", "156"} for record in records or []):
         scores["officer_authority"] += 6
         scores["arrest_detention"] += 4
+
+    if any(record.section_number in {"154", "155", "156"} for record in records or []):
+        scores["fir_reporting"] += 5
 
     if scores["civil_family"] > 0 and not records:
         scores["civil_family"] += 2
@@ -555,11 +597,13 @@ def detect_question_category(
 
 
     pure_officer_query = rank_mentioned and contains_any(query, authority_terms) and not any(
-        term in query for term in ["arrest", "detain", "detention", "custody", "warrant", "without warrant"]
+        term in query for term in ["arrest", "detain", "detention", "custody", "warrant", "without warrant", "fir", "register fir", "complaint", "investigation"]
     )
 
     if pure_officer_query:
         best_category = "officer_authority"
+    elif scores["fir_reporting"] >= max(scores["arrest_detention"] + 1, scores["officer_authority"], 8):
+        best_category = "fir_reporting"
     elif scores["civil_family"] >= 10 and scores["civil_family"] >= max(
         scores["general"],
         scores["trespass"] + 2,

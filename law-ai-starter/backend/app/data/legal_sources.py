@@ -376,6 +376,70 @@ LEGAL_SOURCES: list[LegalSourceRecord] = [
         provision_kind="rights_limit",
     ),
     LegalSourceRecord(
+        id="crpc-154",
+        source_title="Code of Criminal Procedure, 1898",
+        law_name="Code of Criminal Procedure",
+        section_number="154",
+        section_title="Information in cognizable cases",
+        summary=(
+            "This provision concerns how information relating to a cognizable offence is to be given "
+            "to the officer in charge of a police station and recorded as a First Information Report."
+        ),
+        excerpt=(
+            "Information relating to the commission of a cognizable offence, if given to an officer in charge "
+            "of a police station, is to be reduced to writing and entered according to law."
+        ),
+        citation_label="CrPC Section 154",
+        tags=["fir", "first information report", "cognizable offence", "police complaint"],
+        aliases=["register fir", "fir registration", "sho refusing fir", "police not registering fir"],
+        keywords=["information in cognizable cases", "written complaint to police", "record first information report"],
+        related_sections=["CrPC Section 155", "CrPC Section 156"],
+        offence_group="criminal_procedure",
+        provision_kind="procedure",
+    ),
+    LegalSourceRecord(
+        id="crpc-155",
+        source_title="Code of Criminal Procedure, 1898",
+        law_name="Code of Criminal Procedure",
+        section_number="155",
+        section_title="Information as to non-cognizable cases and investigation of such cases",
+        summary=(
+            "This provision concerns how police deal with non-cognizable information and the limits on "
+            "investigation of such cases without legal authorization."
+        ),
+        excerpt=(
+            "Information relating to a non-cognizable case is to be handled according to the legal procedure, "
+            "and investigation of such a case requires the authority contemplated by law."
+        ),
+        citation_label="CrPC Section 155",
+        tags=["non-cognizable", "nc report", "police complaint", "magistrate"],
+        aliases=["non cognizable complaint", "nc case", "police cannot investigate without magistrate"],
+        keywords=["information as to non cognizable cases", "refer to magistrate", "nc report procedure"],
+        related_sections=["CrPC Section 154", "CrPC Section 156"],
+        offence_group="criminal_procedure",
+        provision_kind="procedure",
+    ),
+    LegalSourceRecord(
+        id="crpc-156",
+        source_title="Code of Criminal Procedure, 1898",
+        law_name="Code of Criminal Procedure",
+        section_number="156",
+        section_title="Police officer's power to investigate cognizable cases",
+        summary=(
+            "This provision concerns the police power to investigate cognizable cases according to law."
+        ),
+        excerpt=(
+            "A police officer may investigate a cognizable case according to the power and limits recognized by law."
+        ),
+        citation_label="CrPC Section 156",
+        tags=["investigation", "cognizable case", "police investigation", "fir"],
+        aliases=["investigate cognizable case", "police investigation power", "power to investigate"],
+        keywords=["cognizable investigation", "after fir what happens", "police power to investigate"],
+        related_sections=["CrPC Section 154", "CrPC Section 155"],
+        offence_group="criminal_procedure",
+        provision_kind="procedure",
+    ),
+    LegalSourceRecord(
         id="pca-6",
         source_title="Prevention of Electronic Crimes Act, 2016",
         law_name="Prevention of Electronic Crimes Act",
