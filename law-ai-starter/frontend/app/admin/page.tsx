@@ -91,6 +91,63 @@ type AdminSourceDetailResponse = {
   workflow_note: string;
 };
 
+
+type AdminDraftForm = {
+  id: string;
+  source_title: string;
+  law_name: string;
+  section_number: string;
+  section_title: string;
+  summary: string;
+  excerpt: string;
+  citation_label: string;
+  jurisdiction: string;
+  provision_kind: string;
+  offence_group: string;
+  punishment_summary: string;
+  tags_text: string;
+  aliases_text: string;
+  keywords_text: string;
+  related_sections_text: string;
+};
+
+type AdminDraftValidationIssue = {
+  field: string;
+  level: string;
+  message: string;
+};
+
+type AdminDraftSectionCheck = {
+  existing: string[];
+  missing: string[];
+};
+
+type AdminSourceDraftPreview = {
+  citation_label: string;
+  law_name: string;
+  section_number: string;
+  section_title: string;
+  provision_kind: string;
+  offence_group: string | null;
+  related_sections: string[];
+  tags: string[];
+  aliases: string[];
+  keywords: string[];
+  searchable_terms: string[];
+  admin_note: string;
+};
+
+type AdminSourceDraftValidationResponse = {
+  preview: AdminSourceDraftPreview;
+  readiness_score: number;
+  issue_count: number;
+  error_count: number;
+  warning_count: number;
+  issues: AdminDraftValidationIssue[];
+  related_section_check: AdminDraftSectionCheck;
+  workflow_note: string;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -186,6 +243,40 @@ function prettyKind(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+
+
+function listToText(values: string[]) {
+  return values.join(", ");
+}
+
+function textToList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function detailToDraft(detail: AdminSourceDetailResponse): AdminDraftForm {
+  return {
+    id: detail.item.id,
+    source_title: detail.item.source_title,
+    law_name: detail.item.law_name,
+    section_number: detail.item.section_number,
+    section_title: detail.item.section_title,
+    summary: detail.item.summary,
+    excerpt: detail.item.excerpt,
+    citation_label: detail.item.citation_label,
+    jurisdiction: detail.item.jurisdiction,
+    provision_kind: detail.item.provision_kind,
+    offence_group: detail.item.offence_group || "",
+    punishment_summary: detail.item.punishment_summary || "",
+    tags_text: listToText(detail.item.tags),
+    aliases_text: listToText(detail.item.aliases),
+    keywords_text: listToText(detail.item.keywords),
+    related_sections_text: listToText(detail.item.related_sections),
+  };
+}
+
 function detailListCard(
   title: string,
   description: string,
@@ -212,6 +303,10 @@ export default function AdminPage() {
   const [selectedKind, setSelectedKind] = useState("all");
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [selectedSourceId, setSelectedSourceId] = useState("");
+  const [draftForm, setDraftForm] = useState<AdminDraftForm | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  const [draftValidation, setDraftValidation] = useState<AdminSourceDraftValidationResponse | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -350,6 +445,101 @@ export default function AdminPage() {
 
     return () => controller.abort();
   }, [selectedSourceId]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+
+    setDraftForm(detailToDraft(detail));
+    setDraftValidation(null);
+    setDraftError("");
+  }, [detail]);
+
+  async function validateDraft() {
+    if (!draftForm) {
+      return;
+    }
+
+    try {
+      setDraftLoading(true);
+      setDraftError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/validate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: draftForm.id || undefined,
+          source_title: draftForm.source_title,
+          law_name: draftForm.law_name,
+          section_number: draftForm.section_number,
+          section_title: draftForm.section_title,
+          summary: draftForm.summary,
+          excerpt: draftForm.excerpt,
+          citation_label: draftForm.citation_label,
+          jurisdiction: draftForm.jurisdiction,
+          provision_kind: draftForm.provision_kind,
+          offence_group: draftForm.offence_group || null,
+          punishment_summary: draftForm.punishment_summary || null,
+          tags: textToList(draftForm.tags_text),
+          aliases: textToList(draftForm.aliases_text),
+          keywords: textToList(draftForm.keywords_text),
+          related_sections: textToList(draftForm.related_sections_text),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Draft validation failed with status ${response.status}`);
+      }
+
+      const result: AdminSourceDraftValidationResponse = await response.json();
+      setDraftValidation(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setDraftError(err.message || "Failed to validate draft.");
+      }
+    } finally {
+      setDraftLoading(false);
+    }
+  }
+
+  function updateDraftField(field: keyof AdminDraftForm, value: string) {
+    setDraftForm((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  function resetDraftFromSelected() {
+    if (!detail) {
+      return;
+    }
+    setDraftForm(detailToDraft(detail));
+    setDraftValidation(null);
+    setDraftError("");
+  }
+
+  function startBlankDraft() {
+    setDraftForm({
+      id: "",
+      source_title: "",
+      law_name: "Pakistan Penal Code",
+      section_number: "",
+      section_title: "",
+      summary: "",
+      excerpt: "",
+      citation_label: "",
+      jurisdiction: "Pakistan",
+      provision_kind: "general",
+      offence_group: "",
+      punishment_summary: "",
+      tags_text: "",
+      aliases_text: "",
+      keywords_text: "",
+      related_sections_text: "",
+    });
+    setDraftValidation(null);
+    setDraftError("");
+  }
 
   const filteredPunishmentCount = filteredItems.filter(
     (item) => item.provision_kind === "punishment",
@@ -1202,6 +1392,223 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+            </section>
+
+            <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
+              <div style={{ ...badge("green"), marginBottom: "12px" }}>Phase 4 draft workflow</div>
+              <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
+                Working draft editor + validation preview
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                  gap: "18px",
+                  alignItems: "start",
+                }}
+              >
+                <div style={{ ...softCardStyle, display: "grid", gap: "14px" }}>
+                  <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>
+                    Edit a working draft safely and validate it against basic admin rules. This does not save changes into the live legal catalog yet.
+                  </div>
+
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <button type="button" onClick={validateDraft} style={secondaryButton} disabled={!draftForm || draftLoading}>
+                      {draftLoading ? "Validating..." : "Validate draft"}
+                    </button>
+                    <button type="button" onClick={resetDraftFromSelected} style={secondaryButton} disabled={!detail}>
+                      Reset from selected
+                    </button>
+                    <button type="button" onClick={startBlankDraft} style={secondaryButton}>
+                      Start blank draft
+                    </button>
+                  </div>
+
+                  {!draftForm ? (
+                    <div style={softCardStyle}>Select a record to load an editable draft, or start with a blank draft.</div>
+                  ) : (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Source title</div>
+                          <input value={draftForm.source_title} onChange={(event) => updateDraftField("source_title", event.target.value)} style={fieldStyle} />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Law name</div>
+                          <input value={draftForm.law_name} onChange={(event) => updateDraftField("law_name", event.target.value)} style={fieldStyle} />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Section number</div>
+                          <input value={draftForm.section_number} onChange={(event) => updateDraftField("section_number", event.target.value)} style={fieldStyle} />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Provision kind</div>
+                          <select value={draftForm.provision_kind} onChange={(event) => updateDraftField("provision_kind", event.target.value)} style={fieldStyle}>
+                            {catalog.available_kinds.map((kind) => (
+                              <option key={kind} value={kind}>{prettyKind(kind)}</option>
+                            ))}
+                            {!catalog.available_kinds.includes("general") && <option value="general">General</option>}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Section title</div>
+                          <input value={draftForm.section_title} onChange={(event) => updateDraftField("section_title", event.target.value)} style={fieldStyle} />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Citation label</div>
+                          <input value={draftForm.citation_label} onChange={(event) => updateDraftField("citation_label", event.target.value)} style={fieldStyle} />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Jurisdiction</div>
+                          <input value={draftForm.jurisdiction} onChange={(event) => updateDraftField("jurisdiction", event.target.value)} style={fieldStyle} />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Offence group</div>
+                          <input value={draftForm.offence_group} onChange={(event) => updateDraftField("offence_group", event.target.value)} style={fieldStyle} placeholder="e.g. theft" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Summary</div>
+                        <textarea value={draftForm.summary} onChange={(event) => updateDraftField("summary", event.target.value)} style={{ ...fieldStyle, minHeight: "110px", resize: "vertical" }} />
+                      </div>
+
+                      <div>
+                        <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Excerpt</div>
+                        <textarea value={draftForm.excerpt} onChange={(event) => updateDraftField("excerpt", event.target.value)} style={{ ...fieldStyle, minHeight: "140px", resize: "vertical" }} />
+                      </div>
+
+                      <div>
+                        <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Punishment summary</div>
+                        <input value={draftForm.punishment_summary} onChange={(event) => updateDraftField("punishment_summary", event.target.value)} style={fieldStyle} placeholder="Optional unless this is a punishment record" />
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Tags</div>
+                          <input value={draftForm.tags_text} onChange={(event) => updateDraftField("tags_text", event.target.value)} style={fieldStyle} placeholder="comma, separated, tags" />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Aliases</div>
+                          <input value={draftForm.aliases_text} onChange={(event) => updateDraftField("aliases_text", event.target.value)} style={fieldStyle} placeholder="plain-language aliases" />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Keywords</div>
+                          <input value={draftForm.keywords_text} onChange={(event) => updateDraftField("keywords_text", event.target.value)} style={fieldStyle} placeholder="search keywords" />
+                        </div>
+                        <div>
+                          <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Related sections</div>
+                          <input value={draftForm.related_sections_text} onChange={(event) => updateDraftField("related_sections_text", event.target.value)} style={fieldStyle} placeholder="379, 380, 381" />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div style={{ ...softCardStyle, display: "grid", gap: "14px", position: "sticky", top: "20px" }}>
+                  <div style={{ ...badge("pink") }}>Validation preview</div>
+                  <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>
+                    This prototype check flags missing fields, weak retrieval metadata, and broken section linkages before later save/review workflows exist.
+                  </div>
+
+                  {draftError && (
+                    <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                      Failed to validate draft: {draftError}
+                    </div>
+                  )}
+
+                  {!draftValidation ? (
+                    <div style={softCardStyle}>Run validation to see readiness, issue list, section-link checks, and a normalized preview.</div>
+                  ) : (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px" }}>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Readiness</div>
+                          <div style={{ fontSize: "28px", fontWeight: 800 }}>{draftValidation.readiness_score}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Errors</div>
+                          <div style={{ fontSize: "28px", fontWeight: 800 }}>{draftValidation.error_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Warnings</div>
+                          <div style={{ fontSize: "28px", fontWeight: 800 }}>{draftValidation.warning_count}</div>
+                        </div>
+                      </div>
+
+                      <div style={softCardStyle}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#a9c1ff", marginBottom: "12px" }}>
+                          Normalized preview
+                        </div>
+                        <div style={{ display: "grid", gap: "8px", color: "#dbe4ff", lineHeight: 1.65 }}>
+                          <div><strong style={{ color: "#ffffff" }}>Citation:</strong> {draftValidation.preview.citation_label}</div>
+                          <div><strong style={{ color: "#ffffff" }}>Law / section:</strong> {draftValidation.preview.law_name} • Section {draftValidation.preview.section_number}</div>
+                          <div><strong style={{ color: "#ffffff" }}>Title:</strong> {draftValidation.preview.section_title}</div>
+                          <div><strong style={{ color: "#ffffff" }}>Kind:</strong> {prettyKind(draftValidation.preview.provision_kind)}</div>
+                          <div><strong style={{ color: "#ffffff" }}>Admin note:</strong> {draftValidation.preview.admin_note}</div>
+                        </div>
+                      </div>
+
+                      <div style={softCardStyle}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#a9c1ff", marginBottom: "12px" }}>
+                          Draft issues
+                        </div>
+                        {draftValidation.issues.length === 0 ? (
+                          <div style={{ color: "#bdf3d8" }}>No draft issues found. This draft looks structurally strong for the current prototype rules.</div>
+                        ) : (
+                          <div style={{ display: "grid", gap: "10px" }}>
+                            {draftValidation.issues.map((issue, index) => (
+                              <div key={`${issue.field}-${index}`} style={{ ...softCardStyle, padding: "14px", border: issue.level === "error" ? "1px solid rgba(255, 120, 120, 0.22)" : "1px solid rgba(255, 196, 102, 0.20)" }}>
+                                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "6px" }}>
+                                  <div style={issue.level === "error" ? badge("pink") : badge("green")}>{issue.level.toUpperCase()}</div>
+                                  <div style={{ color: "#dfe7ff", fontWeight: 700 }}>{issue.field}</div>
+                                </div>
+                                <div style={{ color: "#dbe4ff", lineHeight: 1.6 }}>{issue.message}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={softCardStyle}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#a9c1ff", marginBottom: "12px" }}>
+                          Related section check
+                        </div>
+                        <div style={{ display: "grid", gap: "10px" }}>
+                          <div style={{ color: "#dbe4ff" }}>
+                            <strong style={{ color: "#ffffff" }}>Existing:</strong>{" "}
+                            {draftValidation.related_section_check.existing.length > 0 ? draftValidation.related_section_check.existing.join(", ") : "None confirmed"}
+                          </div>
+                          <div style={{ color: "#dbe4ff" }}>
+                            <strong style={{ color: "#ffffff" }}>Missing:</strong>{" "}
+                            {draftValidation.related_section_check.missing.length > 0 ? draftValidation.related_section_check.missing.join(", ") : "No missing links"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={softCardStyle}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#a9c1ff", marginBottom: "12px" }}>
+                          Searchable terms preview
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                          {draftValidation.preview.searchable_terms.length > 0 ? draftValidation.preview.searchable_terms.map((term) => (
+                            <span key={term} style={chipStyle}>{term}</span>
+                          )) : <span style={{ color: "#c6d3f3" }}>No searchable terms available yet.</span>}
+                        </div>
+                      </div>
+
+                      <div style={{ background: "linear-gradient(180deg, rgba(20, 36, 74, 0.96), rgba(12, 21, 45, 0.96))", border: "1px solid rgba(126, 162, 255, 0.18)", borderRadius: "18px", padding: "18px" }}>
+                        <div style={{ fontSize: "15px", fontWeight: 700, marginBottom: "10px" }}>Draft workflow note</div>
+                        <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{draftValidation.workflow_note}</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </section>
 
             <section style={{ ...cardStyle, padding: "24px" }}>

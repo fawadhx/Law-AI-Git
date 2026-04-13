@@ -3,21 +3,29 @@ from collections import Counter
 from app.data.legal_sources import LEGAL_SOURCES
 from app.data.officer_authority import OFFICER_AUTHORITY_DATA
 from app.schemas.admin import (
-    AdminLinkedRecord,
+    AdminDraftSectionCheck,
+    AdminDraftValidationIssue,
     AdminRoadmapItem,
     AdminSourceCatalogResponse,
     AdminSourceCatalogSummary,
     AdminSourceDetailRecord,
     AdminSourceDetailResponse,
+    AdminSourceDraftInput,
+    AdminSourceDraftPreview,
+    AdminSourceDraftValidationResponse,
     AdminSourceRecord,
     AdminStat,
     AdminStatusCard,
     AdminSummaryResponse,
+    AdminLinkedRecord,
 )
 from app.schemas.legal_source import LegalSourceRecord
 
 
 RECORD_INDEX = {record.id: record for record in LEGAL_SOURCES}
+KNOWN_LAWS = sorted({record.law_name for record in LEGAL_SOURCES})
+KNOWN_KINDS = sorted({record.provision_kind for record in LEGAL_SOURCES})
+KNOWN_GROUPS = sorted({record.offence_group for record in LEGAL_SOURCES if record.offence_group})
 
 
 def _section_sort_key(value: str) -> tuple[int, str]:
@@ -25,6 +33,21 @@ def _section_sort_key(value: str) -> tuple[int, str]:
     if digits:
         return (0, digits.zfill(6))
     return (1, value.lower())
+
+
+def _clean_list(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for value in values:
+        item = value.strip()
+        if not item:
+            continue
+        lowered = item.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        cleaned.append(item)
+    return cleaned
 
 
 def _law_breakdown() -> Counter[str]:
@@ -35,7 +58,7 @@ def _group_breakdown() -> Counter[str]:
     return Counter(record.offence_group or "ungrouped" for record in LEGAL_SOURCES)
 
 
-def _build_admin_note(record: LegalSourceRecord) -> str:
+def _build_admin_note(record: LegalSourceRecord | AdminSourceDraftInput) -> str:
     if record.provision_kind == "procedure":
         return "Procedure-oriented record linked to police, FIR, arrest, or reporting flow."
     if record.provision_kind == "punishment":
@@ -162,17 +185,7 @@ def _detail_record(
         *record.tags,
     ]
 
-    deduped_terms: list[str] = []
-    seen_terms: set[str] = set()
-    for term in searchable_terms:
-        cleaned = term.strip()
-        if not cleaned:
-            continue
-        lowered = cleaned.lower()
-        if lowered in seen_terms:
-            continue
-        seen_terms.add(lowered)
-        deduped_terms.append(cleaned)
+    deduped_terms = _clean_list(searchable_terms)
 
     return AdminSourceDetailRecord(
         **_build_source_record(record).model_dump(),
@@ -184,6 +197,130 @@ def _detail_record(
         same_group_record_count=len(same_group_records),
         same_law_record_count=len(same_law_records),
     )
+
+
+def _normalize_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftInput:
+    law_name = payload.law_name.strip()
+    citation_label = payload.citation_label.strip()
+    section_number = payload.section_number.strip()
+
+    if not citation_label and law_name and section_number:
+        citation_label = f"{law_name} s. {section_number}"
+
+    return AdminSourceDraftInput(
+        id=payload.id,
+        source_title=payload.source_title.strip(),
+        law_name=law_name,
+        section_number=section_number,
+        section_title=payload.section_title.strip(),
+        summary=payload.summary.strip(),
+        excerpt=payload.excerpt.strip(),
+        citation_label=citation_label,
+        jurisdiction=payload.jurisdiction.strip() or "Pakistan",
+        tags=_clean_list(payload.tags),
+        aliases=_clean_list(payload.aliases),
+        keywords=_clean_list(payload.keywords),
+        related_sections=_clean_list(payload.related_sections),
+        offence_group=(payload.offence_group or "").strip() or None,
+        punishment_summary=(payload.punishment_summary or "").strip() or None,
+        provision_kind=payload.provision_kind.strip() or "general",
+    )
+
+
+def _related_section_check(payload: AdminSourceDraftInput) -> AdminDraftSectionCheck:
+    if not payload.related_sections or not payload.law_name:
+        return AdminDraftSectionCheck()
+
+    valid_sections = {
+        record.section_number
+        for record in LEGAL_SOURCES
+        if record.law_name == payload.law_name
+    }
+    existing = [section for section in payload.related_sections if section in valid_sections]
+    missing = [section for section in payload.related_sections if section not in valid_sections]
+    return AdminDraftSectionCheck(existing=existing, missing=missing)
+
+
+def _build_draft_preview(payload: AdminSourceDraftInput) -> AdminSourceDraftPreview:
+    searchable_terms = _clean_list([
+        *payload.aliases,
+        *payload.keywords,
+        *payload.tags,
+        payload.section_number,
+        payload.section_title,
+        payload.law_name,
+        payload.offence_group or "",
+    ])
+
+    return AdminSourceDraftPreview(
+        citation_label=payload.citation_label,
+        law_name=payload.law_name,
+        section_number=payload.section_number,
+        section_title=payload.section_title,
+        provision_kind=payload.provision_kind,
+        offence_group=payload.offence_group,
+        related_sections=payload.related_sections,
+        tags=payload.tags,
+        aliases=payload.aliases,
+        keywords=payload.keywords,
+        searchable_terms=searchable_terms[:20],
+        admin_note=_build_admin_note(payload),
+    )
+
+
+def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftValidationIssue], AdminDraftSectionCheck]:
+    issues: list[AdminDraftValidationIssue] = []
+
+    def add_issue(field: str, level: str, message: str) -> None:
+        issues.append(AdminDraftValidationIssue(field=field, level=level, message=message))
+
+    if not payload.source_title:
+        add_issue("source_title", "error", "Source title is required.")
+    if not payload.law_name:
+        add_issue("law_name", "error", "Law name is required.")
+    elif payload.law_name not in KNOWN_LAWS:
+        add_issue("law_name", "warning", "Law name is not in the current prototype catalog, so linked-section checks will be limited.")
+    if not payload.section_number:
+        add_issue("section_number", "error", "Section number is required.")
+    if not payload.section_title:
+        add_issue("section_title", "error", "Section title is required.")
+    if not payload.summary:
+        add_issue("summary", "error", "Summary is required.")
+    elif len(payload.summary) < 50:
+        add_issue("summary", "warning", "Summary is very short. Add more plain-language meaning so admin review is easier.")
+    if not payload.excerpt:
+        add_issue("excerpt", "error", "Excerpt is required.")
+    elif len(payload.excerpt) < 80:
+        add_issue("excerpt", "warning", "Excerpt looks short for a citation-first answer experience.")
+
+    if payload.provision_kind not in KNOWN_KINDS:
+        add_issue("provision_kind", "warning", "Provision kind is not in the current prototype set.")
+
+    if payload.provision_kind == "punishment" and not payload.punishment_summary:
+        add_issue("punishment_summary", "warning", "Punishment records should usually include a punishment summary.")
+
+    if payload.provision_kind != "procedure" and not payload.offence_group:
+        add_issue("offence_group", "warning", "A non-procedure record usually benefits from an offence group for overlap handling.")
+
+    if len(payload.tags) == 0:
+        add_issue("tags", "warning", "Add at least one tag to improve retrieval and admin filtering.")
+    if len(payload.aliases) == 0:
+        add_issue("aliases", "warning", "No aliases added yet. Real-world user wording may be harder to match.")
+    if len(payload.keywords) == 0:
+        add_issue("keywords", "warning", "No keywords added yet. Retrieval quality may be weaker.")
+
+    related_section_check = _related_section_check(payload)
+    if related_section_check.missing:
+        add_issue(
+            "related_sections",
+            "warning",
+            "Some related sections were not found under the selected law: " + ", ".join(related_section_check.missing),
+        )
+
+    if not payload.citation_label:
+        add_issue("citation_label", "warning", "Citation label was auto-filled. Review it before using this draft as a baseline.")
+
+    return issues, related_section_check
 
 
 def get_admin_summary() -> AdminSummaryResponse:
@@ -225,8 +362,8 @@ def get_admin_summary() -> AdminSummaryResponse:
                 text="Inspect one record deeply with excerpt, keywords, aliases, linked sections, and same-group context.",
             ),
             AdminRoadmapItem(
-                title="Review workflow",
-                text="Prepare future draft, review, approval, and archive states for legal source governance.",
+                title="Draft editor",
+                text="Edit a working draft safely, validate fields, and preview readiness without changing the live prototype dataset.",
             ),
             AdminRoadmapItem(
                 title="Prompt and policy controls",
@@ -238,7 +375,7 @@ def get_admin_summary() -> AdminSummaryResponse:
                 title="Source catalog status",
                 content=(
                     f"The admin panel is now connected to a live prototype catalog of {total_records} in-memory legal records. "
-                    "Record inspection is now deeper, but editing, approvals, and uploads are still planned rather than implemented."
+                    "Record inspection and draft validation are available, but editing persistence, approvals, and uploads are still planned rather than implemented."
                 ),
             ),
             AdminStatusCard(
@@ -251,8 +388,8 @@ def get_admin_summary() -> AdminSummaryResponse:
         ],
         workflow_steps=[
             "Review section wording, excerpt quality, and linked sections before treating a record as production-ready.",
+            "Validate a working draft to catch missing metadata, weak summaries, or broken section pairings early.",
             "Verify that offence, punishment, and procedure sections are paired correctly for answer composition.",
-            "Check aliases, keywords, and searchable terms to keep retrieval behavior grounded in real user wording.",
             "Prepare future source editing, publishing, and audit-log controls before any real admin rollout.",
         ],
         roadmap_items=[
@@ -278,8 +415,8 @@ def get_admin_summary() -> AdminSummaryResponse:
             ),
         ],
         admin_boundary=(
-            "This admin area is still a prototype control surface. It can inspect the legal source catalog and open detailed source views, "
-            "but authentication, editing, approvals, uploads, persistence, and audit logging must be added before it is treated as a real production admin system."
+            "This admin area is still a prototype control surface. It can inspect the legal source catalog, open detailed source views, and validate working drafts, "
+            "but authentication, persistence, approvals, uploads, and audit logging must be added before it is treated as a real production admin system."
         ),
     )
 
@@ -307,7 +444,7 @@ def get_admin_source_catalog() -> AdminSourceCatalogResponse:
         available_groups=sorted(group_breakdown.keys()),
         available_kinds=sorted({record.provision_kind for record in LEGAL_SOURCES}),
         workflow_note=(
-            "This catalog is still read-only, but it now supports a detail workflow so one record can be inspected deeply before future edit, review, publish, and archive actions are added."
+            "This catalog is still read-only, but it now supports a detail workflow and a draft-validation workflow so one record can be inspected and prepared before future edit, review, publish, and archive actions are added."
         ),
     )
 
@@ -331,5 +468,28 @@ def get_admin_source_detail(source_id: str) -> AdminSourceDetailResponse | None:
         same_law_records=same_law_records,
         workflow_note=(
             "Use this detail view to validate excerpt quality, searchable wording, and section pairings before future draft, review, and publish workflows are added."
+        ),
+    )
+
+
+
+def validate_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftValidationResponse:
+    normalized = _normalize_draft(payload)
+    issues, related_section_check = _validate_draft(normalized)
+    error_count = sum(1 for issue in issues if issue.level == "error")
+    warning_count = sum(1 for issue in issues if issue.level == "warning")
+    readiness_score = max(0, min(100, 100 - error_count * 18 - warning_count * 6))
+
+    return AdminSourceDraftValidationResponse(
+        preview=_build_draft_preview(normalized),
+        readiness_score=readiness_score,
+        issue_count=len(issues),
+        error_count=error_count,
+        warning_count=warning_count,
+        issues=issues,
+        related_section_check=related_section_check,
+        workflow_note=(
+            "This validation flow checks draft completeness and relationship hygiene without changing the live in-memory catalog. "
+            "Treat it as a preparation step before future real save, review, and publish workflows are added."
         ),
     )

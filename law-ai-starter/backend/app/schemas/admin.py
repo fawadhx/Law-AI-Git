@@ -87,3 +87,59 @@ class AdminSourceDetailResponse(BaseModel):
     same_group_records: list[AdminLinkedRecord] = Field(default_factory=list)
     same_law_records: list[AdminLinkedRecord] = Field(default_factory=list)
     workflow_note: str
+
+
+class AdminSourceDraftInput(BaseModel):
+    id: str | None = None
+    source_title: str = ""
+    law_name: str = ""
+    section_number: str = ""
+    section_title: str = ""
+    summary: str = ""
+    excerpt: str = ""
+    citation_label: str = ""
+    jurisdiction: str = "Pakistan"
+    tags: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    related_sections: list[str] = Field(default_factory=list)
+    offence_group: str | None = None
+    punishment_summary: str | None = None
+    provision_kind: str = "general"
+
+
+class AdminDraftValidationIssue(BaseModel):
+    field: str
+    level: str
+    message: str
+
+
+class AdminDraftSectionCheck(BaseModel):
+    existing: list[str] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)
+
+
+class AdminSourceDraftPreview(BaseModel):
+    citation_label: str
+    law_name: str
+    section_number: str
+    section_title: str
+    provision_kind: str
+    offence_group: str | None = None
+    related_sections: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    searchable_terms: list[str] = Field(default_factory=list)
+    admin_note: str
+
+
+class AdminSourceDraftValidationResponse(BaseModel):
+    preview: AdminSourceDraftPreview
+    readiness_score: int
+    issue_count: int
+    error_count: int
+    warning_count: int
+    issues: list[AdminDraftValidationIssue] = Field(default_factory=list)
+    related_section_check: AdminDraftSectionCheck
+    workflow_note: str
