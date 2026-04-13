@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.admin import (
+    AdminPublishExecutionResponse,
     AdminPublishQueueRecord,
     AdminSourceCatalogResponse,
     AdminSourceDetailResponse,
@@ -9,6 +10,7 @@ from app.schemas.admin import (
     AdminSourceDraftValidationResponse,
     AdminSourcePublishPreviewResponse,
     AdminSummaryResponse,
+    AdminActivityFeedResponse,
     AdminWorkspaceDraftDetailResponse,
     AdminWorkspaceDraftSaveRequest,
     AdminWorkspaceResponse,
@@ -19,11 +21,13 @@ from app.services.admin_service import (
     build_admin_workspace_publish_package,
     delete_admin_workspace_draft,
     delete_admin_workspace_publish_package,
+    get_admin_activity_feed,
     get_admin_source_catalog,
     get_admin_source_detail,
     get_admin_summary,
     get_admin_workspace,
     get_admin_workspace_draft,
+    publish_admin_workspace_package,
     review_admin_source_draft,
     save_admin_workspace_draft,
     validate_admin_source_draft,
@@ -102,3 +106,19 @@ def admin_workspace_delete_publish_package(package_id: str) -> dict[str, bool]:
     if not deleted:
         raise HTTPException(status_code=404, detail="Publish package not found.")
     return {"ok": True}
+
+
+@router.get("/admin/activity", response_model=AdminActivityFeedResponse)
+def admin_activity() -> AdminActivityFeedResponse:
+    return get_admin_activity_feed()
+
+
+@router.post("/admin/workspace/publish-packages/{package_id}/publish", response_model=AdminPublishExecutionResponse)
+def admin_workspace_publish_package(package_id: str) -> AdminPublishExecutionResponse:
+    try:
+        result = publish_admin_workspace_package(package_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Publish package not found.")
+    return result

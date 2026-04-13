@@ -249,6 +249,38 @@ class AdminWorkspaceResponse(BaseModel):
     staged_publish_count: int
     ready_draft_count: int
     blocked_item_count: int
+    session_publish_count: int = 0
     drafts: list[AdminWorkspaceDraftRecord] = Field(default_factory=list)
     publish_queue: list[AdminPublishQueueRecord] = Field(default_factory=list)
+    workflow_note: str
+
+
+class AdminActivityRecord(BaseModel):
+    activity_id: str
+    kind: str
+    title: str
+    detail: str
+    status: str
+    citation_label: str | None = None
+    record_id: str | None = None
+    created_at: str
+
+
+class AdminActivityFeedResponse(BaseModel):
+    total_events: int
+    publish_event_count: int
+    latest_publish_label: str | None = None
+    items: list[AdminActivityRecord] = Field(default_factory=list)
+    workflow_note: str
+
+
+class AdminPublishExecutionResponse(BaseModel):
+    publish_status: str
+    package_id: str
+    published_record_id: str
+    citation_label: str
+    publish_mode: str
+    changed_field_count: int
+    catalog_record_count: int
+    activity: AdminActivityRecord
     workflow_note: str

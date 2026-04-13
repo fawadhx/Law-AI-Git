@@ -22,14 +22,27 @@ from app.schemas.admin import (
     AdminStat,
     AdminStatusCard,
     AdminSummaryResponse,
+    AdminActivityFeedResponse,
+    AdminActivityRecord,
+    AdminPublishExecutionResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
 
 
-RECORD_INDEX = {record.id: record for record in LEGAL_SOURCES}
-KNOWN_LAWS = sorted({record.law_name for record in LEGAL_SOURCES})
-KNOWN_KINDS = sorted({record.provision_kind for record in LEGAL_SOURCES})
-KNOWN_GROUPS = sorted({record.offence_group for record in LEGAL_SOURCES if record.offence_group})
+def _record_index() -> dict[str, LegalSourceRecord]:
+    return {record.id: record for record in LEGAL_SOURCES}
+
+
+def _known_laws() -> list[str]:
+    return sorted({record.law_name for record in LEGAL_SOURCES})
+
+
+def _known_kinds() -> list[str]:
+    return sorted({record.provision_kind for record in LEGAL_SOURCES})
+
+
+def _known_groups() -> list[str]:
+    return sorted({record.offence_group for record in LEGAL_SOURCES if record.offence_group})
 
 
 def _section_sort_key(value: str) -> tuple[int, str]:
@@ -60,6 +73,72 @@ def _law_breakdown() -> Counter[str]:
 
 def _group_breakdown() -> Counter[str]:
     return Counter(record.offence_group or "ungrouped" for record in LEGAL_SOURCES)
+
+
+def _slugify(value: str) -> str:
+    cleaned = []
+    previous_dash = False
+    for character in value.lower():
+        if character.isalnum():
+            cleaned.append(character)
+            previous_dash = False
+        elif not previous_dash:
+            cleaned.append('-')
+            previous_dash = True
+    slug = ''.join(cleaned).strip('-')
+    return slug or 'record'
+
+
+def _build_record_id(payload: AdminSourceDraftInput) -> str:
+    law_part = _slugify(payload.law_name)[:24]
+    section_part = _slugify(payload.section_number)[:18]
+    title_part = _slugify(payload.section_title)[:24]
+    return f"draft-{law_part}-{section_part}-{title_part}-{uuid4().hex[:6]}"
+
+
+def _sort_live_catalog() -> None:
+    LEGAL_SOURCES.sort(
+        key=lambda record: (
+            record.law_name.lower(),
+            _section_sort_key(record.section_number),
+            record.section_title.lower(),
+            record.id.lower(),
+        )
+    )
+
+
+def _draft_to_live_record(payload: AdminSourceDraftInput, record_id: str) -> LegalSourceRecord:
+    return LegalSourceRecord(
+        id=record_id,
+        source_title=payload.source_title,
+        law_name=payload.law_name,
+        section_number=payload.section_number,
+        section_title=payload.section_title,
+        summary=payload.summary,
+        excerpt=payload.excerpt,
+        citation_label=payload.citation_label,
+        jurisdiction=payload.jurisdiction,
+        tags=list(payload.tags),
+        aliases=list(payload.aliases),
+        keywords=list(payload.keywords),
+        related_sections=list(payload.related_sections),
+        offence_group=payload.offence_group,
+        punishment_summary=payload.punishment_summary,
+        provision_kind=payload.provision_kind,
+    )
+
+
+def _upsert_live_record(payload: AdminSourceDraftInput, target_record_id: str | None = None) -> LegalSourceRecord:
+    record_id = target_record_id or payload.id or _build_record_id(payload)
+    new_record = _draft_to_live_record(payload, record_id=record_id)
+    for index, existing in enumerate(LEGAL_SOURCES):
+        if existing.id == record_id:
+            LEGAL_SOURCES[index] = new_record
+            _sort_live_catalog()
+            return new_record
+    LEGAL_SOURCES.append(new_record)
+    _sort_live_catalog()
+    return new_record
 
 
 def _build_admin_note(record: LegalSourceRecord | AdminSourceDraftInput) -> str:
@@ -282,7 +361,7 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
         add_issue("source_title", "error", "Source title is required.")
     if not payload.law_name:
         add_issue("law_name", "error", "Law name is required.")
-    elif payload.law_name not in KNOWN_LAWS:
+    elif payload.law_name not in _known_laws():
         add_issue("law_name", "warning", "Law name is not in the current prototype catalog, so linked-section checks will be limited.")
     if not payload.section_number:
         add_issue("section_number", "error", "Section number is required.")
@@ -297,7 +376,7 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
     elif len(payload.excerpt) < 80:
         add_issue("excerpt", "warning", "Excerpt looks short for a citation-first answer experience.")
 
-    if payload.provision_kind not in KNOWN_KINDS:
+    if payload.provision_kind not in _known_kinds():
         add_issue("provision_kind", "warning", "Provision kind is not in the current prototype set.")
 
     if payload.provision_kind == "punishment" and not payload.punishment_summary:
@@ -455,7 +534,7 @@ def get_admin_source_catalog() -> AdminSourceCatalogResponse:
 
 
 def get_admin_source_detail(source_id: str) -> AdminSourceDetailResponse | None:
-    record = RECORD_INDEX.get(source_id)
+    record = _record_index().get(source_id)
     if record is None:
         return None
 
@@ -726,7 +805,7 @@ def _context_counts(payload: AdminSourceDraftInput) -> tuple[int, int, int]:
 def review_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftReviewResponse:
     normalized = _normalize_draft(payload)
     issues, related_section_check = _validate_draft(normalized)
-    existing_record = RECORD_INDEX.get(normalized.id) if normalized.id else None
+    existing_record = _record_index().get(normalized.id) if normalized.id else None
     changed_fields = _compare_draft_fields(normalized, existing_record)
     checklist = _build_review_checklist(normalized, issues, related_section_check, changed_fields)
 
@@ -765,7 +844,7 @@ def review_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraf
 def build_admin_source_publish_preview(payload: AdminSourceDraftInput) -> AdminSourcePublishPreviewResponse:
     normalized = _normalize_draft(payload)
     issues, _related_section_check = _validate_draft(normalized)
-    existing_record = RECORD_INDEX.get(normalized.id) if normalized.id else None
+    existing_record = _record_index().get(normalized.id) if normalized.id else None
     changed_fields = _compare_draft_fields(normalized, existing_record)
     blocker_messages = _collect_issue_messages(issues, level="error")
     warning_messages = _collect_issue_messages(issues, level="warning")
@@ -819,10 +898,14 @@ from app.schemas.admin import (
     AdminWorkspaceDraftSaveRequest,
     AdminWorkspaceResponse,
     AdminWorkspaceStageRequest,
+    AdminActivityFeedResponse,
+    AdminActivityRecord,
+    AdminPublishExecutionResponse,
 )
 
 WORKSPACE_DRAFT_STORE: dict[str, dict] = {}
 PUBLISH_PACKAGE_STORE: dict[str, dict] = {}
+ACTIVITY_FEED_STORE: list[AdminActivityRecord] = []
 
 
 def _utc_now_iso() -> str:
@@ -907,6 +990,7 @@ def get_admin_workspace() -> AdminWorkspaceResponse:
         staged_publish_count=len(publish_queue),
         ready_draft_count=ready_draft_count,
         blocked_item_count=blocked_item_count,
+        session_publish_count=sum(1 for item in ACTIVITY_FEED_STORE if item.kind == "publish"),
         drafts=drafts,
         publish_queue=publish_queue,
         workflow_note=(
@@ -1011,3 +1095,86 @@ def delete_admin_workspace_publish_package(package_id: str) -> bool:
         return False
     del PUBLISH_PACKAGE_STORE[package_id]
     return True
+
+
+def _log_activity(*, kind: str, title: str, detail: str, status: str, citation_label: str | None = None, record_id: str | None = None) -> AdminActivityRecord:
+    activity = AdminActivityRecord(
+        activity_id=str(uuid4()),
+        kind=kind,
+        title=title,
+        detail=detail,
+        status=status,
+        citation_label=citation_label,
+        record_id=record_id,
+        created_at=_utc_now_iso(),
+    )
+    ACTIVITY_FEED_STORE.insert(0, activity)
+    del ACTIVITY_FEED_STORE[24:]
+    return activity
+
+
+def get_admin_activity_feed() -> AdminActivityFeedResponse:
+    latest_publish = next((item for item in ACTIVITY_FEED_STORE if item.kind == "publish"), None)
+    return AdminActivityFeedResponse(
+        total_events=len(ACTIVITY_FEED_STORE),
+        publish_event_count=sum(1 for item in ACTIVITY_FEED_STORE if item.kind == "publish"),
+        latest_publish_label=latest_publish.citation_label if latest_publish else None,
+        items=list(ACTIVITY_FEED_STORE),
+        workflow_note=(
+            "This activity feed is session-only and exists to show prototype publish actions and live-catalog changes during the current server run. "
+            "It is helpful for testing, but it is not a real audit log yet."
+        ),
+    )
+
+
+def publish_admin_workspace_package(package_id: str) -> AdminPublishExecutionResponse | None:
+    package_entry = PUBLISH_PACKAGE_STORE.get(package_id)
+    if package_entry is None:
+        return None
+
+    package = package_entry["publish_package"]
+    if package.publish_status == "blocked" or package.blocker_count > 0:
+        raise ValueError("This staged package still has blockers and cannot be published into the live session catalog.")
+
+    payload: AdminSourceDraftInput = _normalize_draft(package_entry["payload"])
+    target_record_id = package.target_record_id if package.publish_mode == "update_existing_record" else None
+    published_record = _upsert_live_record(payload, target_record_id=target_record_id)
+
+    activity = _log_activity(
+        kind="publish",
+        title=("Published live record update" if package.publish_mode == "update_existing_record" else "Published new live record"),
+        detail=(
+            f"{package.publish_mode.replace('_', ' ')} applied to {published_record.citation_label}. "
+            f"{package.changed_field_count} changed field(s) carried into the live in-memory catalog for this session."
+        ),
+        status="published",
+        citation_label=published_record.citation_label,
+        record_id=published_record.id,
+    )
+
+    if package.workspace_draft_id and package.workspace_draft_id in WORKSPACE_DRAFT_STORE:
+        workspace_entry = WORKSPACE_DRAFT_STORE[package.workspace_draft_id]
+        workspace_record: AdminWorkspaceDraftRecord = workspace_entry["workspace_draft"]
+        workspace_entry["workspace_draft"] = workspace_record.model_copy(
+            update={
+                "source_record_id": published_record.id,
+                "publish_status": "published_in_session",
+            }
+        )
+
+    del PUBLISH_PACKAGE_STORE[package_id]
+
+    return AdminPublishExecutionResponse(
+        publish_status="published_in_session",
+        package_id=package_id,
+        published_record_id=published_record.id,
+        citation_label=published_record.citation_label,
+        publish_mode=package.publish_mode,
+        changed_field_count=package.changed_field_count,
+        catalog_record_count=len(LEGAL_SOURCES),
+        activity=activity,
+        workflow_note=(
+            "This publish action updated the live in-memory source catalog for the current server session, so admin summary, source catalog, and source detail views can refresh immediately. "
+            "It is still not database-backed persistence or a production-grade approval flow."
+        ),
+    )

@@ -259,8 +259,40 @@ type AdminWorkspaceResponse = {
   staged_publish_count: number;
   ready_draft_count: number;
   blocked_item_count: number;
+  session_publish_count: number;
   drafts: AdminWorkspaceDraftRecord[];
   publish_queue: AdminPublishQueueRecord[];
+  workflow_note: string;
+};
+
+type AdminActivityRecord = {
+  activity_id: string;
+  kind: string;
+  title: string;
+  detail: string;
+  status: string;
+  citation_label: string | null;
+  record_id: string | null;
+  created_at: string;
+};
+
+type AdminActivityFeedResponse = {
+  total_events: number;
+  publish_event_count: number;
+  latest_publish_label: string | null;
+  items: AdminActivityRecord[];
+  workflow_note: string;
+};
+
+type AdminPublishExecutionResponse = {
+  publish_status: string;
+  package_id: string;
+  published_record_id: string;
+  citation_label: string;
+  publish_mode: string;
+  changed_field_count: number;
+  catalog_record_count: number;
+  activity: AdminActivityRecord;
   workflow_note: string;
 };
 
@@ -485,6 +517,67 @@ export default function AdminPage() {
   const [workspaceDraftId, setWorkspaceDraftId] = useState("");
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [workspaceActionError, setWorkspaceActionError] = useState("");
+  const [activity, setActivity] = useState<AdminActivityFeedResponse | null>(null);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState("");
+
+  async function loadAdminSnapshot(preferredSourceId?: string) {
+    try {
+      setLoading(true);
+      setError("");
+
+      const [summaryResponse, sourcesResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/v1/admin/summary`, {
+          method: "GET",
+          cache: "no-store",
+        }),
+        fetch(`${API_BASE_URL}/api/v1/admin/sources`, {
+          method: "GET",
+          cache: "no-store",
+        }),
+      ]);
+
+      if (!summaryResponse.ok) {
+        throw new Error(`Summary request failed with status ${summaryResponse.status}`);
+      }
+
+      if (!sourcesResponse.ok) {
+        throw new Error(`Source catalog request failed with status ${sourcesResponse.status}`);
+      }
+
+      const [summaryResult, catalogResult]: [AdminSummaryResponse, AdminSourceCatalogResponse] = await Promise.all([
+        summaryResponse.json(),
+        sourcesResponse.json(),
+      ]);
+
+      setSummary(summaryResult);
+      setCatalog(catalogResult);
+
+      if (catalogResult.items.length === 0) {
+        setSelectedSourceId("");
+        setDetail(null);
+        return;
+      }
+
+      const preferredStillExists = preferredSourceId
+        ? catalogResult.items.some((item) => item.id === preferredSourceId)
+        : false;
+      const currentStillExists = catalogResult.items.some((item) => item.id === selectedSourceId);
+      const nextSelected = preferredStillExists
+        ? preferredSourceId || catalogResult.items[0].id
+        : currentStillExists
+          ? selectedSourceId
+          : catalogResult.items[0].id;
+
+      setSelectedSourceId(nextSelected);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message || "Failed to load admin workspace.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function loadWorkspace() {
     try {
@@ -508,61 +601,32 @@ export default function AdminPage() {
     }
   }
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadAdminWorkspace() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const [summaryResponse, sourcesResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/v1/admin/summary`, {
-            method: "GET",
-            signal: controller.signal,
-            cache: "no-store",
-          }),
-          fetch(`${API_BASE_URL}/api/v1/admin/sources`, {
-            method: "GET",
-            signal: controller.signal,
-            cache: "no-store",
-          }),
-        ]);
-
-        if (!summaryResponse.ok) {
-          throw new Error(`Summary request failed with status ${summaryResponse.status}`);
-        }
-
-        if (!sourcesResponse.ok) {
-          throw new Error(`Source catalog request failed with status ${sourcesResponse.status}`);
-        }
-
-        const [summaryResult, catalogResult]: [
-          AdminSummaryResponse,
-          AdminSourceCatalogResponse,
-        ] = await Promise.all([summaryResponse.json(), sourcesResponse.json()]);
-
-        setSummary(summaryResult);
-        setCatalog(catalogResult);
-        if (catalogResult.items.length > 0) {
-          setSelectedSourceId((current) => current || catalogResult.items[0].id);
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name !== "AbortError") {
-          setError(err.message || "Failed to load admin workspace.");
-        }
-      } finally {
-        setLoading(false);
+  async function loadActivity() {
+    try {
+      setActivityLoading(true);
+      setActivityError("");
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/activity`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`Activity request failed with status ${response.status}`);
       }
+      const result: AdminActivityFeedResponse = await response.json();
+      setActivity(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setActivityError(err.message || "Failed to load admin activity.");
+      }
+    } finally {
+      setActivityLoading(false);
     }
-
-    loadAdminWorkspace();
-
-    return () => controller.abort();
-  }, []);
+  }
 
   useEffect(() => {
+    loadAdminSnapshot();
     loadWorkspace();
+    loadActivity();
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -864,6 +928,35 @@ export default function AdminPage() {
     } catch (err) {
       if (err instanceof Error) {
         setWorkspaceActionError(err.message || "Failed to stage publish package.");
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
+  async function publishStagedPackage(packageId: string) {
+    try {
+      setWorkspaceBusy(true);
+      setWorkspaceActionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/publish-packages/${packageId}/publish`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const fallbackText = await response.text();
+        throw new Error(fallbackText || `Publish failed with status ${response.status}`);
+      }
+
+      const result: AdminPublishExecutionResponse = await response.json();
+      await Promise.all([
+        loadAdminSnapshot(result.published_record_id),
+        loadWorkspace(),
+        loadActivity(),
+      ]);
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceActionError(err.message || "Failed to publish staged package.");
       }
     } finally {
       setWorkspaceBusy(false);
@@ -1864,6 +1957,10 @@ export default function AdminPage() {
                           <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Blocked items</div>
                           <div style={{ fontSize: "28px", fontWeight: 800 }}>{workspace.blocked_item_count}</div>
                         </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Session publishes</div>
+                          <div style={{ fontSize: "28px", fontWeight: 800 }}>{workspace.session_publish_count}</div>
+                        </div>
                       </div>
 
                       <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{workspace.workflow_note}</div>
@@ -1931,9 +2028,19 @@ export default function AdminPage() {
                                   <span style={chipStyle}>{item.blocker_count} blockers</span>
                                 </div>
                                 <div style={{ color: "#c6d3f3", fontSize: "13px", marginBottom: "10px" }}>Staged {item.staged_at}</div>
-                                <button type="button" onClick={() => deletePublishPackage(item.package_id)} style={secondaryButton}>
-                                  Remove package
-                                </button>
+                                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => publishStagedPackage(item.package_id)}
+                                    style={secondaryButton}
+                                    disabled={workspaceBusy || item.publish_status === "blocked"}
+                                  >
+                                    {workspaceBusy ? "Working..." : "Publish to live catalog"}
+                                  </button>
+                                  <button type="button" onClick={() => deletePublishPackage(item.package_id)} style={secondaryButton}>
+                                    Remove package
+                                  </button>
+                                </div>
                               </div>
                             ))
                           )}
@@ -1943,6 +2050,61 @@ export default function AdminPage() {
                   )}
                 </div>
               )}
+            </section>
+
+            <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
+              <div style={{ ...badge(), marginBottom: "12px" }}>Phase 4 activity feed</div>
+              <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
+                Session publish activity
+              </div>
+
+              {activityLoading ? (
+                <div style={softCardStyle}>Loading admin activity...</div>
+              ) : activityError ? (
+                <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                  Failed to load admin activity: {activityError}
+                </div>
+              ) : activity ? (
+                <div style={{ display: "grid", gap: "18px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+                    <div style={softCardStyle}>
+                      <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Session events</div>
+                      <div style={{ fontSize: "28px", fontWeight: 800 }}>{activity.total_events}</div>
+                    </div>
+                    <div style={softCardStyle}>
+                      <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Publish events</div>
+                      <div style={{ fontSize: "28px", fontWeight: 800 }}>{activity.publish_event_count}</div>
+                    </div>
+                    <div style={softCardStyle}>
+                      <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Latest publish</div>
+                      <div style={{ fontSize: "15px", fontWeight: 700, lineHeight: 1.5 }}>{activity.latest_publish_label || "No publish yet"}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{activity.workflow_note}</div>
+
+                  <div style={{ display: "grid", gap: "12px" }}>
+                    {activity.items.length === 0 ? (
+                      <div style={softCardStyle}>No session activity yet. Publish a staged package to create the first live-catalog event.</div>
+                    ) : (
+                      activity.items.map((item) => (
+                        <div key={item.activity_id} style={{ ...softCardStyle, padding: "14px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", marginBottom: "8px" }}>
+                            <div style={{ color: "#ffffff", fontWeight: 700 }}>{item.title}</div>
+                            <div style={badge(toneFromStatus(item.status))}>{prettyKind(item.status)}</div>
+                          </div>
+                          <div style={{ color: "#aac0ff", fontSize: "13px", marginBottom: "8px" }}>
+                            {item.kind.replaceAll("_", " ")}
+                            {item.citation_label ? ` • ${item.citation_label}` : ""}
+                          </div>
+                          <div style={{ color: "#dbe4ff", lineHeight: 1.65, marginBottom: "8px" }}>{item.detail}</div>
+                          <div style={{ color: "#c6d3f3", fontSize: "13px" }}>{item.created_at}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
@@ -1961,7 +2123,7 @@ Working draft editor + review gate + publish preview
               >
                 <div style={{ ...softCardStyle, display: "grid", gap: "14px" }}>
                   <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>
-                    Edit a working draft safely, validate it, run a review gate, build a publish preview, and now save reusable workspace snapshots or stage publish packages. The live legal catalog still remains unchanged.
+                    Edit a working draft safely, validate it, run a review gate, build a publish preview, and save reusable workspace snapshots. Once a staged package is ready, you can now publish it into the live in-memory catalog for the current session.
                   </div>
 
                   {workspaceDraftId && <div style={{ ...badge("green"), width: "fit-content" }}>Active workspace draft</div>}
