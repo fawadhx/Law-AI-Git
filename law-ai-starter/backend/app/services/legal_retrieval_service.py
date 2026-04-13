@@ -1,4 +1,5 @@
 import re
+from collections import defaultdict
 
 from app.data.legal_sources import LEGAL_SOURCES
 from app.schemas.legal_source import LegalSourceRecord
@@ -105,11 +106,13 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
     ],
     "cheating": [
         "cheating",
+        "cheated",
         "fraud",
         "fraudulent",
         "scam",
         "deception",
         "dishonest inducement",
+        "property deal",
         "420",
         "dhoka",
     ],
@@ -215,6 +218,7 @@ CONCEPT_SYNONYMS: dict[str, list[str]] = {
         "banking scam",
         "fake website",
         "wrongful gain online",
+        "otp scam",
     ],
     "police": [
         "police",
@@ -249,6 +253,9 @@ PHRASE_HINTS: dict[str, list[str]] = {
     "used my cnic": ["identity", "electronic_fraud"],
     "fake digital document": ["electronic_forgery", "identity"],
     "online scam": ["electronic_fraud", "online", "identity"],
+    "otp scam": ["electronic_fraud", "identity", "online"],
+    "fake profile": ["identity", "online", "harassment"],
+    "blackmail online": ["threat", "online", "harassment"],
 }
 
 
@@ -256,7 +263,7 @@ PUNISHMENT_HINTS = ["punishment", "penalty", "sentence", "fine", "jail", "impris
 ONLINE_HINTS = ["online", "internet", "cyber", "social media", "facebook", "instagram", "whatsapp", "tiktok"]
 POLICE_HINTS = ["police", "arrest", "detain", "custody", "warrant"]
 PROPERTY_HINTS = ["property", "money", "land", "plot", "phone", "wallet", "entrusted"]
-FRAUD_HINTS = ["cheat", "cheating", "fraud", "scam", "deceive", "deceived", "420", "trust", "entrusted", "amanat", "khayanat"]
+FRAUD_HINTS = ["cheat", "cheated", "cheating", "fraud", "scam", "deceive", "deceived", "deal", "property deal", "420", "trust", "entrusted", "amanat", "khayanat"]
 TRESPASS_HINTS = ["trespass", "illegal entry", "unlawful entry", "plot", "entered", "enter", "land", "leave"]
 EXTORTION_HINTS = ["extortion", "bhatta", "ransom", "money demand", "demanded money", "demanded money by threat", "blackmail for money", "fear of injury"]
 ROBBERY_HINTS = ["robbery", "mugging", "gunpoint", "armed snatching", "snatching with force", "snatched at gunpoint", "violent theft"]
@@ -266,6 +273,12 @@ MISCHIEF_HINTS = ["mischief", "vandalism", "property damage", "damaged", "broke"
 IDENTITY_HINTS = ["identity", "identity theft", "cnic", "impersonation", "fake profile", "my documents"]
 ELECTRONIC_FRAUD_HINTS = ["electronic fraud", "online scam", "digital scam", "fake website", "banking scam", "otp"]
 ELECTRONIC_FORGERY_HINTS = ["electronic forgery", "fake screenshot", "forged pdf", "edited digital evidence", "fake digital document"]
+THREAT_HINTS = ["threat", "threaten", "intimidation", "blackmail", "alarm"]
+HARASSMENT_HINTS = ["harassment", "stalking", "modesty", "privacy intrusion", "unwanted contact"]
+FORCE_HINTS = ["force", "gunpoint", "weapon", "armed", "violence"]
+
+
+PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
 
 
 def normalize_text(value: str) -> str:
@@ -315,9 +328,35 @@ def expand_query_terms(query: str) -> list[str]:
 
 
 
+def build_query_signals(query: str) -> dict[str, bool]:
+    query_lower = normalize_text(query)
+    return {
+        "punishment": any(word in query_lower for word in PUNISHMENT_HINTS),
+        "online": any(phrase in query_lower for phrase in ONLINE_HINTS),
+        "police": any(word in query_lower for word in POLICE_HINTS),
+        "property": any(word in query_lower for word in PROPERTY_HINTS),
+        "fraud": any(word in query_lower for word in FRAUD_HINTS),
+        "trespass": any(word in query_lower for word in TRESPASS_HINTS),
+        "extortion": any(word in query_lower for word in EXTORTION_HINTS),
+        "robbery": any(word in query_lower for word in ROBBERY_HINTS),
+        "restraint": any(word in query_lower for word in RESTRAINT_HINTS),
+        "confinement": any(word in query_lower for word in CONFINEMENT_HINTS),
+        "mischief": any(word in query_lower for word in MISCHIEF_HINTS),
+        "identity": any(word in query_lower for word in IDENTITY_HINTS),
+        "electronic_fraud": any(word in query_lower for word in ELECTRONIC_FRAUD_HINTS),
+        "electronic_forgery": any(word in query_lower for word in ELECTRONIC_FORGERY_HINTS),
+        "threat": any(word in query_lower for word in THREAT_HINTS),
+        "harassment": any(word in query_lower for word in HARASSMENT_HINTS),
+        "force": any(word in query_lower for word in FORCE_HINTS),
+        "mentions_money": "money" in query_lower,
+    }
+
+
+
 def score_record(query: str, record: LegalSourceRecord) -> int:
     query_lower = normalize_text(query)
     query_terms = expand_query_terms(query)
+    signals = build_query_signals(query)
 
     searchable_text = normalize_text(" ".join(record.searchable_parts))
     searchable_tokens = set(tokenize(searchable_text))
@@ -355,68 +394,88 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if record.section_number and record.section_number in query_lower:
         score += 3
 
-    punishment_requested = any(word in query_lower for word in PUNISHMENT_HINTS)
-    if punishment_requested and record.provision_kind == "punishment":
+    if signals["punishment"] and record.provision_kind == "punishment":
         score += 5
-    elif punishment_requested and record.punishment_summary:
+    elif signals["punishment"] and record.punishment_summary:
         score += 2
 
-    online_requested = any(phrase in query_lower for phrase in ONLINE_HINTS)
-    if online_requested and record.law_name == "Prevention of Electronic Crimes Act":
+    if signals["online"] and record.law_name == "Prevention of Electronic Crimes Act":
         score += 4
 
-    police_requested = any(word in query_lower for word in POLICE_HINTS)
-    if police_requested and record.law_name == "Code of Criminal Procedure":
+    if signals["police"] and record.law_name == "Code of Criminal Procedure":
         score += 4
+    elif not signals["police"] and record.offence_group == "criminal_procedure":
+        score -= 4
 
-    property_requested = any(word in query_lower for word in PROPERTY_HINTS)
-    fraud_requested = any(word in query_lower for word in FRAUD_HINTS)
-    trespass_requested = any(word in query_lower for word in TRESPASS_HINTS)
-    extortion_requested = any(word in query_lower for word in EXTORTION_HINTS)
-    robbery_requested = any(word in query_lower for word in ROBBERY_HINTS)
-    restraint_requested = any(word in query_lower for word in RESTRAINT_HINTS)
-    confinement_requested = any(word in query_lower for word in CONFINEMENT_HINTS)
-    mischief_requested = any(word in query_lower for word in MISCHIEF_HINTS)
-    identity_requested = any(word in query_lower for word in IDENTITY_HINTS)
-    electronic_fraud_requested = any(word in query_lower for word in ELECTRONIC_FRAUD_HINTS)
-    electronic_forgery_requested = any(word in query_lower for word in ELECTRONIC_FORGERY_HINTS)
-
-    if property_requested and record.offence_group == "property_offence":
+    if signals["property"] and record.offence_group == "property_offence":
         score += 2
 
-    if fraud_requested and record.offence_group == "fraud_offence":
+    if signals["fraud"] and record.offence_group == "fraud_offence":
         score += 4
 
-    if trespass_requested and (record.section_number in {"441", "447"} or record.offence_group == "property_offence"):
+    if signals["fraud"] and record.section_number in {"415", "417", "420"}:
+        score += 5
+
+    if signals["trespass"] and (record.section_number in {"441", "447"} or record.offence_group == "property_offence"):
         score += 4
 
-    if extortion_requested and record.offence_group == "violent_property_offence":
+    if signals["extortion"] and record.offence_group == "violent_property_offence":
         score += 5
 
-    if robbery_requested and record.offence_group == "violent_property_offence":
+    if signals["robbery"] and record.offence_group == "violent_property_offence":
         score += 6
 
-    if restraint_requested and not police_requested and record.offence_group == "restraint_offence":
+    if signals["restraint"] and not signals["police"] and record.offence_group == "restraint_offence":
         score += 5
 
-    if confinement_requested and not police_requested and record.offence_group == "restraint_offence":
+    if signals["confinement"] and not signals["police"] and record.offence_group == "restraint_offence":
         score += 6
 
-    if mischief_requested and record.offence_group == "property_damage_offence":
+    if signals["mischief"] and record.offence_group == "property_damage_offence":
         score += 6
 
-    if identity_requested and record.offence_group == "cyber_identity_offence":
+    if signals["identity"] and record.offence_group == "cyber_identity_offence":
         score += 6
 
-    if electronic_fraud_requested and record.section_number == "14":
+    if signals["electronic_fraud"] and record.section_number == "14":
         score += 8
-    elif electronic_fraud_requested and record.offence_group == "cyber_identity_offence":
+    elif signals["electronic_fraud"] and record.offence_group == "cyber_identity_offence":
         score += 5
 
-    if electronic_forgery_requested and record.section_number == "13":
+    if signals["electronic_forgery"] and record.section_number == "13":
         score += 8
-    elif electronic_forgery_requested and record.offence_group == "cyber_identity_offence":
+    elif signals["electronic_forgery"] and record.offence_group == "cyber_identity_offence":
         score += 5
+
+    if signals["force"] and record.offence_group == "violent_property_offence":
+        score += 5
+
+    if signals["threat"] and signals["online"] and record.section_number in {"24", "503", "506"}:
+        score += 5
+
+    if signals["harassment"] and signals["online"] and record.section_number in {"24", "509", "20", "21"}:
+        score += 6
+
+    if signals["harassment"] and not signals["online"] and record.section_number == "509":
+        score += 5
+
+    if signals["identity"] and signals["fraud"] and record.section_number in {"14", "16", "420"}:
+        score += 5
+
+    if signals["identity"] and signals["online"] and record.section_number in {"16", "14", "13"}:
+        score += 6
+
+    if signals["online"] and signals["threat"] and record.offence_group == "threat_offence":
+        score += 3
+
+    if signals["online"] and signals["harassment"] and record.offence_group == "harassment_offence":
+        score += 3
+
+    if signals["mentions_money"] and signals["threat"] and record.section_number == "383":
+        score += 8
+
+    if signals["mentions_money"] and signals["threat"] and record.section_number == "503":
+        score += 4
 
     if "420" in query_lower and record.section_number == "420":
         score += 6
@@ -453,14 +512,32 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if "426" in query_lower and record.section_number == "426":
         score += 7
 
-    if not online_requested and not identity_requested and record.offence_group == "cyber_identity_offence":
-        score -= 3
-
-    if restraint_requested and not robbery_requested and not extortion_requested and record.offence_group == "violent_property_offence":
-        score -= 3
-
-    if mischief_requested and record.offence_group == "cyber_identity_offence":
+    if not signals["online"] and record.law_name == "Prevention of Electronic Crimes Act":
         score -= 4
+
+    if not signals["harassment"] and not signals["online"] and record.offence_group == "harassment_offence":
+        score -= 4
+
+    if not signals["online"] and not signals["identity"] and record.offence_group == "cyber_identity_offence":
+        score -= 3
+
+    if signals["restraint"] and not signals["robbery"] and not signals["extortion"] and record.offence_group == "violent_property_offence":
+        score -= 3
+
+    if (signals["restraint"] or signals["confinement"]) and record.offence_group == "criminal_procedure":
+        score -= 5
+
+    if signals["mischief"] and record.offence_group == "cyber_identity_offence":
+        score -= 4
+
+    if signals["force"] and record.offence_group == "property_offence":
+        score -= 2
+
+    if signals["fraud"] and not signals["force"] and record.offence_group == "property_offence":
+        score -= 3
+
+    if signals["online"] and not signals["identity"] and record.offence_group == "property_damage_offence":
+        score -= 2
 
     if "without permission" in query_lower and record.section_number == "378":
         score += 5
@@ -483,33 +560,217 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if "car" in query_lower and "damaged" in query_lower and record.section_number == "425":
         score += 7
 
+    if "fake profile" in query_lower and record.section_number in {"16", "24", "20"}:
+        score += 7
+
+    if "blackmail online" in query_lower and record.section_number in {"24", "503", "506"}:
+        score += 7
+
     return score
 
 
 
-def retrieve_scored_legal_sources(query: str, limit: int = 3) -> list[tuple[int, LegalSourceRecord]]:
-    scored_results: list[tuple[int, LegalSourceRecord]] = []
+def citation_reference(record: LegalSourceRecord) -> str:
+    return normalize_text(record.citation_label)
+
+
+
+def is_primary_record(record: LegalSourceRecord) -> bool:
+    return record.provision_kind in PRIMARY_KINDS
+
+
+
+def record_reference_matches(reference: str, record: LegalSourceRecord) -> bool:
+    ref = normalize_text(reference)
+    if not ref:
+        return False
+
+    candidates = {
+        normalize_text(record.citation_label),
+        normalize_text(f"{record.law_name} section {record.section_number}"),
+        normalize_text(f"section {record.section_number}"),
+    }
+    return ref in candidates or any(candidate in ref or ref in candidate for candidate in candidates)
+
+
+
+def find_linked_records(
+    anchor: LegalSourceRecord,
+    scored_results: list[tuple[int, LegalSourceRecord]],
+) -> list[tuple[int, LegalSourceRecord]]:
+    linked: list[tuple[int, LegalSourceRecord]] = []
+    related_refs = anchor.related_sections or []
+
+    for score, record in scored_results:
+        if record.id == anchor.id:
+            continue
+        if any(record_reference_matches(reference, record) for reference in related_refs):
+            linked.append((score, record))
+
+    if linked:
+        return linked
+
+    for score, record in scored_results:
+        if record.id == anchor.id:
+            continue
+        if anchor.offence_group and anchor.offence_group == record.offence_group:
+            if anchor.provision_kind == "punishment" and is_primary_record(record):
+                linked.append((score, record))
+            elif record.provision_kind == "punishment":
+                linked.append((score, record))
+
+    return linked
+
+
+
+def should_include_overlap(
+    primary_record: LegalSourceRecord,
+    candidate_record: LegalSourceRecord,
+    candidate_score: int,
+    top_score: int,
+    query: str,
+) -> bool:
+    query_lower = normalize_text(query)
+    signals = build_query_signals(query)
+
+    if candidate_record.id == primary_record.id:
+        return False
+
+    if candidate_record.offence_group == primary_record.offence_group and candidate_record.law_name == primary_record.law_name:
+        return False
+
+    if candidate_score < max(8, top_score - 7):
+        return False
+
+    if signals["online"] and signals["threat"]:
+        return candidate_record.section_number in {"24", "503", "506"}
+
+    if signals["online"] and signals["harassment"]:
+        return candidate_record.section_number in {"24", "509", "20", "21"}
+
+    if signals["identity"] and (signals["fraud"] or signals["electronic_forgery"] or signals["electronic_fraud"]):
+        return candidate_record.section_number in {"13", "14", "16", "420"}
+
+    if signals["robbery"] and signals["threat"]:
+        return candidate_record.section_number in {"390", "392", "503", "506", "383", "384"}
+
+    if signals["trespass"] and signals["mischief"]:
+        return candidate_record.section_number in {"441", "447", "425", "426"}
+
+    if signals["harassment"] and "privacy" in query_lower:
+        return candidate_record.section_number in {"509", "20", "24"}
+
+    if candidate_record.law_name != primary_record.law_name:
+        return True
+
+    return candidate_record.offence_group != primary_record.offence_group
+
+
+
+def select_contextual_records(
+    query: str,
+    scored_results: list[tuple[int, LegalSourceRecord]],
+    limit: int,
+) -> list[tuple[int, LegalSourceRecord]]:
+    if not scored_results:
+        return []
+
+    top_score, primary = scored_results[0]
+    signals = build_query_signals(query)
+    selected: list[tuple[int, LegalSourceRecord]] = [(top_score, primary)]
+    selected_ids = {primary.id}
+
+    linked_records = sorted(
+        find_linked_records(primary, scored_results),
+        key=lambda item: (
+            1 if item[1].provision_kind == "punishment" else 0,
+            item[0],
+        ),
+        reverse=True,
+    )
+
+    for item in linked_records:
+        if len(selected) >= limit:
+            break
+        score, record = item
+        if record.id in selected_ids:
+            continue
+        if signals["punishment"] or record.provision_kind == "punishment" or record.law_name != primary.law_name:
+            selected.append(item)
+            selected_ids.add(record.id)
+            break
+
+    overlap_candidates = [
+        item
+        for item in scored_results[1:]
+        if item[1].id not in selected_ids
+        and should_include_overlap(primary, item[1], item[0], top_score, query)
+    ]
+
+    overlap_candidates.sort(
+        key=lambda item: (
+            item[0],
+            1 if is_primary_record(item[1]) else 0,
+            item[1].law_name,
+        ),
+        reverse=True,
+    )
+
+    for score, record in overlap_candidates:
+        if len(selected) >= limit:
+            break
+        selected.append((score, record))
+        selected_ids.add(record.id)
+
+        overlap_linked = find_linked_records(record, scored_results)
+        for linked_score, linked_record in overlap_linked:
+            if len(selected) >= limit:
+                break
+            if linked_record.id in selected_ids:
+                continue
+            if linked_record.provision_kind == "punishment" or signals["punishment"]:
+                selected.append((linked_score, linked_record))
+                selected_ids.add(linked_record.id)
+                break
+        if len(selected) >= limit:
+            break
+
+    minimum_fill_score = max(6, top_score - 10)
+    for score, record in scored_results[1:]:
+        if len(selected) >= limit:
+            break
+        if record.id in selected_ids or score < minimum_fill_score:
+            continue
+        selected.append((score, record))
+        selected_ids.add(record.id)
+
+    return selected[:limit]
+
+
+
+def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int, LegalSourceRecord]]:
+    all_results: list[tuple[int, LegalSourceRecord]] = []
 
     for record in LEGAL_SOURCES:
         score = score_record(query, record)
         if score > 0:
-            scored_results.append((score, record))
+            all_results.append((score, record))
 
-    scored_results.sort(
+    all_results.sort(
         key=lambda item: (
             item[0],
-            1 if item[1].provision_kind == "definition" else 0,
+            1 if is_primary_record(item[1]) else 0,
             item[1].law_name,
             item[1].section_number,
         ),
         reverse=True,
     )
 
-    return scored_results[:limit]
+    return select_contextual_records(query, all_results, limit)
 
 
 
-def retrieve_legal_sources(query: str, limit: int = 3) -> list[LegalSourceRecord]:
+def retrieve_legal_sources(query: str, limit: int = 4) -> list[LegalSourceRecord]:
     return [record for _, record in retrieve_scored_legal_sources(query, limit=limit)]
 
 
@@ -517,6 +778,7 @@ def retrieve_legal_sources(query: str, limit: int = 3) -> list[LegalSourceRecord
 def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     query_lower = normalize_text(query)
     searchable_text = normalize_text(" ".join(record.searchable_parts))
+    signals = build_query_signals(query)
 
     reasons: list[str] = []
 
@@ -554,17 +816,20 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
             f"Conceptual keyword overlap found: {', '.join(unique_hits[:4])}."
         )
 
-    punishment_requested = any(word in query_lower for word in PUNISHMENT_HINTS)
-    if punishment_requested and record.provision_kind == "punishment":
+    if signals["punishment"] and record.provision_kind == "punishment":
         reasons.append("Punishment-related wording in the question aligns with this provision.")
 
-    online_requested = any(phrase in query_lower for phrase in ONLINE_HINTS)
-    if online_requested and record.law_name == "Prevention of Electronic Crimes Act":
+    if signals["online"] and record.law_name == "Prevention of Electronic Crimes Act":
         reasons.append("Online or cyber wording in the question aligns with PECA-related provisions.")
 
-    police_requested = any(word in query_lower for word in POLICE_HINTS)
-    if police_requested and record.law_name == "Code of Criminal Procedure":
+    if signals["police"] and record.law_name == "Code of Criminal Procedure":
         reasons.append("Police or detention wording in the question aligns with criminal-procedure provisions.")
+
+    if signals["online"] and signals["threat"] and record.section_number in {"24", "503", "506"}:
+        reasons.append("The query combines online and threat signals, which can overlap across PECA and PPC provisions.")
+
+    if signals["identity"] and (signals["fraud"] or signals["electronic_forgery"] or signals["electronic_fraud"]) and record.section_number in {"13", "14", "16", "420"}:
+        reasons.append("The query combines identity misuse with fraud or forgery wording, so overlapping cyber-fraud provisions were considered.")
 
     if record.related_sections:
         reasons.append(f"This record also links to related sections: {', '.join(record.related_sections[:2])}.")

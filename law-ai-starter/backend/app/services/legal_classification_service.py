@@ -18,12 +18,15 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
         "label": "Cheating / Fraud / Breach of Trust",
         "keywords": [
             "cheating",
+            "cheated",
             "fraud",
             "scam",
             "deceive",
             "deception",
             "420",
             "dhoka",
+            "deal",
+            "property deal",
             "breach of trust",
             "criminal breach of trust",
             "amanat",
@@ -83,6 +86,7 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
             "privacy intrusion",
             "509",
             "eve teasing",
+            "unwanted contact",
         ],
     },
     "cybercrime": {
@@ -111,6 +115,7 @@ CATEGORY_CONFIG: dict[str, dict[str, object]] = {
             "fake profile",
             "electronic fraud",
             "electronic forgery",
+            "otp scam",
         ],
     },
     "trespass": {
@@ -235,6 +240,23 @@ def detect_question_category(
     if ("damaged" in query or "damage" in query) and ("car" in query or "bike" in query or "property" in query):
         scores["property_damage"] += 5
 
+    if ("online" in query or "cyber" in query) and ("harassment" in query or "stalking" in query):
+        scores["harassment"] += 6
+        scores["cybercrime"] += 5
+
+    if ("online" in query or "cyber" in query) and (
+        "blackmail" in query or "photos" in query or "photo" in query or "privacy" in query
+    ):
+        scores["harassment"] += 7
+        scores["cybercrime"] += 6
+        scores["criminal_intimidation"] += 2
+
+    if ("identity" in query or "cnic" in query or "fake profile" in query) and (
+        "fraud" in query or "scam" in query or "forgery" in query
+    ):
+        scores["cybercrime"] += 7
+        scores["cheating_fraud"] += 4
+
     for record in records or []:
         law_name = normalize_text(record.law_name)
         section_title = normalize_text(record.section_title)
@@ -255,12 +277,10 @@ def detect_question_category(
                 scores["cheating_fraud"] += 4
             if "robbery" in section_title or "extortion" in tags or "mugging" in tags:
                 scores["robbery_extortion"] += 7
-            if "trespass" in section_title or "trespass" in tags:
-                scores["trespass"] += 4
-            if "harassment" in section_title or "modesty" in tags:
-                scores["harassment"] += 4
             if "trespass" in section_title or "land" in tags or "illegal entry" in tags:
                 scores["trespass"] += 5
+            if "harassment" in section_title or "modesty" in tags:
+                scores["harassment"] += 4
             if "restraint" in section_title or "confinement" in section_title or "blocked way" in tags:
                 scores["restraint_confinement"] += 5
             if "mischief" in section_title or "property damage" in tags or "vandalism" in tags:
@@ -270,6 +290,11 @@ def detect_question_category(
             scores["cybercrime"] += 5
             if "stalking" in section_title or "harassment" in tags:
                 scores["harassment"] += 7
+            if ("online" in query or "cyber" in query) and (
+                "blackmail" in query or "photos" in query or "photo" in query or "privacy" in query
+            ) and record.section_number == "24":
+                scores["harassment"] += 8
+                scores["cybercrime"] += 5
             if "identity" in section_title or "forgery" in section_title or "electronic fraud" in section_title:
                 scores["cybercrime"] += 5
             if ("damaged" in query or "damage" in query) and ("car" in query or "bike" in query or "property" in query):
@@ -280,6 +305,25 @@ def detect_question_category(
 
         if "authority" in section_title or "rank" in tags:
             scores["officer_authority"] += 4
+
+    if scores["harassment"] > 0 and scores["cybercrime"] > 0 and ("online" in query or "cyber" in query or "social media" in query):
+        scores["harassment"] += 5
+
+    if ("online" in query or "cyber" in query) and (
+        "blackmail" in query or "photos" in query or "photo" in query or "privacy" in query
+    ) and scores["harassment"] > 0:
+        scores["harassment"] += 4
+        scores["cybercrime"] += 3
+
+    if scores["robbery_extortion"] > 0 and scores["criminal_intimidation"] > 0 and (
+        "money" in query or "gunpoint" in query or "snatched" in query
+    ):
+        scores["robbery_extortion"] += 5
+
+    if scores["cybercrime"] > 0 and scores["cheating_fraud"] > 0 and (
+        "online" in query or "cnic" in query or "identity" in query or "otp" in query
+    ):
+        scores["cybercrime"] += 5
 
     best_category = max(scores, key=scores.get)
 

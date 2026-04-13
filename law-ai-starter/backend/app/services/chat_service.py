@@ -1,3 +1,5 @@
+from collections import Counter
+
 from app.schemas.chat import (
     ChatCategory,
     ChatConfidence,
@@ -18,17 +20,28 @@ LEGAL_DISCLAIMER = (
     "It does not provide legal advice, legal representation, or a substitute for a lawyer."
 )
 
+PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
+
 
 def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
-    return [
-        Citation(
-            title=record.law_name,
-            section=record.section_number,
-            note=record.section_title,
-            excerpt=record.excerpt,
+    seen: set[tuple[str, str, str]] = set()
+    citations: list[Citation] = []
+
+    for record in records:
+        key = (record.law_name, record.section_number, record.section_title)
+        if key in seen:
+            continue
+        seen.add(key)
+        citations.append(
+            Citation(
+                title=record.law_name,
+                section=record.section_number,
+                note=record.section_title,
+                excerpt=record.excerpt,
+            )
         )
-        for record in records
-    ]
+
+    return citations
 
 
 
@@ -67,7 +80,7 @@ def build_why_matched(
 ) -> list[MatchExplanation]:
     explanations: list[MatchExplanation] = []
 
-    for record in records[:3]:
+    for record in records[:4]:
         reasons = explain_record_match(question, record)
         explanations.append(
             MatchExplanation(
@@ -84,51 +97,51 @@ def build_category_guidance(category_key: str) -> str:
     guidance_map = {
         "theft": (
             "This appears to involve a property-taking issue. "
-            "The system will usually check the main theft provision and then any linked punishment provision."
+            "The system usually checks the main theft section first and then any linked punishment provision."
         ),
         "cheating_fraud": (
             "This appears to involve cheating, fraud, dishonest inducement, or criminal breach of trust. "
-            "The system will usually check the offence-defining section first and then any linked punishment section."
+            "The system usually checks the offence-defining section first and then linked punishment or overlap sections."
         ),
         "robbery_extortion": (
             "This appears to involve robbery, extortion, force-based snatching, or fear-based delivery of property. "
-            "The system will usually check the defining section first and then the linked punishment section."
+            "The system usually checks the violent-property provision first and then related punishment or threat sections."
         ),
         "criminal_intimidation": (
             "This appears to involve a threat, intimidation, or pressure-related issue. "
-            "The system will usually check criminal-intimidation provisions and their punishment section."
+            "The system may also surface overlap with cyber-stalking or extortion provisions where the facts point that way."
         ),
         "defamation": (
             "This appears to involve reputation harm, false statements, or defamation-related issues. "
-            "The system will usually check the main defamation provision and then the punishment provision."
+            "The system usually checks the main defamation provision and then the punishment provision."
         ),
         "harassment": (
             "This appears to involve harassment, stalking, insulting modesty, privacy intrusion, or related conduct. "
-            "The system may match PPC Section 509, PECA cyber-stalking provisions, or both, depending on the facts."
+            "Depending on the facts, both PPC and PECA provisions may become relevant at the same time."
         ),
         "cybercrime": (
             "This appears to involve an online or digital issue. "
-            "The system will usually check PECA-related provisions first, especially where privacy, dignity, unauthorized access, or online misuse is involved."
+            "The system usually checks PECA-related provisions first, but may also surface PPC overlap where the facts include threats, fraud, or harassment."
         ),
         "trespass": (
             "This appears to involve unlawful entry, land possession, or criminal-trespass issues. "
-            "The system will usually check the trespass-defining provision and then the punishment section."
+            "The system may also surface property-damage overlap if the facts mention breaking or damaging property."
         ),
         "restraint_confinement": (
             "This appears to involve a person being blocked, stopped, confined, or prevented from leaving a place. "
-            "The system will usually check wrongful-restraint or wrongful-confinement provisions and their punishment sections."
+            "The system usually checks wrongful-restraint or wrongful-confinement provisions and their punishment sections."
         ),
         "property_damage": (
             "This appears to involve property damage, destruction, or vandalism. "
-            "The system will usually check the mischief provision and the linked punishment section."
+            "The system usually checks the mischief provision and the linked punishment section."
         ),
         "arrest_detention": (
             "This appears to involve arrest, detention, custody, or police procedure. "
-            "The system will usually check criminal-procedure provisions such as manner of arrest, warrant rules, and detention limits."
+            "The system usually checks criminal-procedure provisions such as manner of arrest, warrant rules, and detention limits."
         ),
         "officer_authority": (
             "This appears to concern police rank, authority, or powers. "
-            "The system will usually check structured officer-authority records rather than only offence provisions."
+            "The system usually checks structured officer-authority records rather than only offence provisions."
         ),
         "general": (
             "This appears to be a broader legal-information question. "
@@ -155,6 +168,11 @@ def build_confidence_note(confidence: ChatConfidence) -> str:
 
 
 
+def is_primary_record(record: LegalSourceRecord) -> bool:
+    return record.provision_kind in PRIMARY_KINDS
+
+
+
 def build_record_reference(record: LegalSourceRecord) -> str:
     lines = [
         f"- {record.citation_label}",
@@ -162,13 +180,58 @@ def build_record_reference(record: LegalSourceRecord) -> str:
         f"  Section title: {record.section_title}",
     ]
 
+    if record.summary:
+        lines.append(f"  Summary: {record.summary}")
+
     if record.punishment_summary:
         lines.append(f"  Punishment note: {record.punishment_summary}")
 
     if record.related_sections:
-        lines.append(f"  Related sections: {', '.join(record.related_sections[:2])}")
+        lines.append(f"  Related sections: {', '.join(record.related_sections[:3])}")
 
     return "\n".join(lines)
+
+
+
+def summarize_overlap(records: list[LegalSourceRecord]) -> str | None:
+    if len(records) < 2:
+        return None
+
+    law_names = {record.law_name for record in records}
+    offence_groups = [record.offence_group for record in records if record.offence_group]
+    distinct_groups = set(offence_groups)
+
+    if len(law_names) > 1:
+        if "Prevention of Electronic Crimes Act" in law_names and "Pakistan Penal Code" in law_names:
+            return (
+                "The facts may engage overlapping PPC and PECA provisions in the current prototype, "
+                "so both traditional criminal-law and cyber-law sections are being surfaced together."
+            )
+        return (
+            "The current prototype found relevant sections from more than one law, which suggests an overlap issue rather than a single isolated section."
+        )
+
+    if len(distinct_groups) > 1:
+        common_groups = Counter(offence_groups).most_common(2)
+        group_names = ", ".join(group for group, _ in common_groups if group)
+        return (
+            "The current prototype found more than one offence pattern in the question. "
+            f"The strongest overlap clusters were: {group_names}."
+        )
+
+    return None
+
+
+
+def split_records(records: list[LegalSourceRecord]) -> tuple[list[LegalSourceRecord], list[LegalSourceRecord]]:
+    primary_records = [record for record in records if is_primary_record(record)]
+    support_records = [record for record in records if record not in primary_records]
+
+    if not primary_records and records:
+        primary_records = [records[0]]
+        support_records = records[1:]
+
+    return primary_records, support_records
 
 
 
@@ -195,6 +258,7 @@ def build_no_match_answer(
         "- defamation\n"
         "- sexual harassment or cyber stalking\n"
         "- criminal trespass\n"
+        "- misuse of CNIC or fake profile\n"
         "- a specific section number\n\n"
         f'Your question was: "{question.strip()}"'
     )
@@ -206,7 +270,8 @@ def build_match_answer(
     category: dict[str, str],
     confidence: ChatConfidence,
 ) -> str:
-    primary = records[0]
+    primary_records, support_records = split_records(records)
+    primary = primary_records[0]
 
     if confidence.level == "high":
         opening = "A strong current match was found in the prototype dataset."
@@ -224,12 +289,24 @@ def build_match_answer(
         "",
         "Primary matched provision:",
         build_record_reference(primary),
-        "",
-        f"Plain-language summary: {primary.summary}",
     ]
 
     if primary.punishment_summary:
-        lines.extend(["", f"Punishment note: {primary.punishment_summary}"])
+        lines.extend(["", f"Primary punishment note: {primary.punishment_summary}"])
+
+    overlap_note = summarize_overlap(records)
+    if overlap_note:
+        lines.extend(["", "Overlap note:", overlap_note])
+
+    if len(primary_records) > 1:
+        lines.extend(["", "Other main provisions that may also matter:"])
+        for record in primary_records[1:]:
+            lines.append(build_record_reference(record))
+
+    if support_records:
+        lines.extend(["", "Supporting or linked provisions:"])
+        for record in support_records:
+            lines.append(build_record_reference(record))
 
     lines.extend(
         [
@@ -239,22 +316,6 @@ def build_match_answer(
             "",
             "Confidence note:",
             build_confidence_note(confidence),
-        ]
-    )
-
-    if len(records) > 1:
-        lines.extend(
-            [
-                "",
-                "Other potentially relevant matched provisions:",
-            ]
-        )
-
-        for record in records[1:]:
-            lines.append(build_record_reference(record))
-
-    lines.extend(
-        [
             "",
             "Current prototype note:",
             (
@@ -283,7 +344,7 @@ def build_answer(
 
 
 def generate_mock_legal_response(question: str) -> ChatQueryResponse:
-    scored_records = retrieve_scored_legal_sources(question, limit=3)
+    scored_records = retrieve_scored_legal_sources(question, limit=4)
     records = [record for _, record in scored_records]
 
     detected_category = detect_question_category(question, records)
