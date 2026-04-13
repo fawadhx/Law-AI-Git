@@ -148,6 +148,52 @@ type AdminSourceDraftValidationResponse = {
   workflow_note: string;
 };
 
+
+type AdminDraftFieldChange = {
+  field: string;
+  label: string;
+  before: string | null;
+  after: string | null;
+  changed: boolean;
+};
+
+type AdminReviewChecklistItem = {
+  key: string;
+  title: string;
+  status: string;
+  detail: string;
+};
+
+type AdminSourceDraftReviewResponse = {
+  review_status: string;
+  approval_label: string;
+  readiness_score: number;
+  blocker_count: number;
+  warning_count: number;
+  publish_mode: string;
+  changed_field_count: number;
+  changed_fields: AdminDraftFieldChange[];
+  checklist: AdminReviewChecklistItem[];
+  workflow_note: string;
+};
+
+type AdminSourcePublishPreviewResponse = {
+  publish_status: string;
+  publish_mode: string;
+  target_record_id: string | null;
+  changed_field_count: number;
+  searchable_term_count: number;
+  linked_section_count: number;
+  companion_hit_count: number;
+  same_group_context_count: number;
+  same_law_context_count: number;
+  blockers: string[];
+  warnings: string[];
+  recommended_actions: string[];
+  changed_fields: AdminDraftFieldChange[];
+  workflow_note: string;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -243,7 +289,33 @@ function prettyKind(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function toneFromStatus(value: string): "blue" | "green" | "pink" {
+  const lowered = value.toLowerCase();
+  if (lowered.includes("block") || lowered.includes("error")) return "pink";
+  if (lowered.includes("ready") || lowered.includes("pass")) return "green";
+  return "blue";
+}
 
+function draftFormToPayload(draftForm: AdminDraftForm) {
+  return {
+    id: draftForm.id || undefined,
+    source_title: draftForm.source_title,
+    law_name: draftForm.law_name,
+    section_number: draftForm.section_number,
+    section_title: draftForm.section_title,
+    summary: draftForm.summary,
+    excerpt: draftForm.excerpt,
+    citation_label: draftForm.citation_label,
+    jurisdiction: draftForm.jurisdiction,
+    provision_kind: draftForm.provision_kind,
+    offence_group: draftForm.offence_group || null,
+    punishment_summary: draftForm.punishment_summary || null,
+    tags: textToList(draftForm.tags_text),
+    aliases: textToList(draftForm.aliases_text),
+    keywords: textToList(draftForm.keywords_text),
+    related_sections: textToList(draftForm.related_sections_text),
+  };
+}
 
 function listToText(values: string[]) {
   return values.join(", ");
@@ -307,6 +379,12 @@ export default function AdminPage() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [draftValidation, setDraftValidation] = useState<AdminSourceDraftValidationResponse | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [draftReview, setDraftReview] = useState<AdminSourceDraftReviewResponse | null>(null);
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [publishError, setPublishError] = useState("");
+  const [publishPreview, setPublishPreview] = useState<AdminSourcePublishPreviewResponse | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -454,6 +532,10 @@ export default function AdminPage() {
     setDraftForm(detailToDraft(detail));
     setDraftValidation(null);
     setDraftError("");
+    setDraftReview(null);
+    setReviewError("");
+    setPublishPreview(null);
+    setPublishError("");
   }, [detail]);
 
   async function validateDraft() {
@@ -470,24 +552,7 @@ export default function AdminPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          id: draftForm.id || undefined,
-          source_title: draftForm.source_title,
-          law_name: draftForm.law_name,
-          section_number: draftForm.section_number,
-          section_title: draftForm.section_title,
-          summary: draftForm.summary,
-          excerpt: draftForm.excerpt,
-          citation_label: draftForm.citation_label,
-          jurisdiction: draftForm.jurisdiction,
-          provision_kind: draftForm.provision_kind,
-          offence_group: draftForm.offence_group || null,
-          punishment_summary: draftForm.punishment_summary || null,
-          tags: textToList(draftForm.tags_text),
-          aliases: textToList(draftForm.aliases_text),
-          keywords: textToList(draftForm.keywords_text),
-          related_sections: textToList(draftForm.related_sections_text),
-        }),
+        body: JSON.stringify(draftFormToPayload(draftForm)),
       });
 
       if (!response.ok) {
@@ -505,8 +570,78 @@ export default function AdminPage() {
     }
   }
 
+  async function runDraftReview() {
+    if (!draftForm) {
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      setReviewError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/review`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(draftFormToPayload(draftForm)),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Draft review failed with status ${response.status}`);
+      }
+
+      const result: AdminSourceDraftReviewResponse = await response.json();
+      setDraftReview(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setReviewError(err.message || "Failed to run draft review.");
+      }
+    } finally {
+      setReviewLoading(false);
+    }
+  }
+
+  async function buildPublishPreview() {
+    if (!draftForm) {
+      return;
+    }
+
+    try {
+      setPublishLoading(true);
+      setPublishError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/publish-preview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(draftFormToPayload(draftForm)),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Publish preview failed with status ${response.status}`);
+      }
+
+      const result: AdminSourcePublishPreviewResponse = await response.json();
+      setPublishPreview(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setPublishError(err.message || "Failed to build publish preview.");
+      }
+    } finally {
+      setPublishLoading(false);
+    }
+  }
+
   function updateDraftField(field: keyof AdminDraftForm, value: string) {
     setDraftForm((current) => (current ? { ...current, [field]: value } : current));
+    setDraftValidation(null);
+    setDraftReview(null);
+    setPublishPreview(null);
+    setDraftError("");
+    setReviewError("");
+    setPublishError("");
   }
 
   function resetDraftFromSelected() {
@@ -516,6 +651,10 @@ export default function AdminPage() {
     setDraftForm(detailToDraft(detail));
     setDraftValidation(null);
     setDraftError("");
+    setDraftReview(null);
+    setReviewError("");
+    setPublishPreview(null);
+    setPublishError("");
   }
 
   function startBlankDraft() {
@@ -539,6 +678,10 @@ export default function AdminPage() {
     });
     setDraftValidation(null);
     setDraftError("");
+    setDraftReview(null);
+    setReviewError("");
+    setPublishPreview(null);
+    setPublishError("");
   }
 
   const filteredPunishmentCount = filteredItems.filter(
@@ -589,9 +732,9 @@ export default function AdminPage() {
                 lineHeight: 1.65,
               }}
             >
-              The admin workspace now supports a real source-detail flow. You can filter the live
-              prototype catalog, select one record, and inspect excerpt quality, searchable terms,
-              and linked sections before later add, edit, and review workflows are introduced.
+              The admin workspace now supports a real source-detail flow plus a prototype review gate. You can filter the live
+              prototype catalog, select one record, edit a draft, validate it, compare change scope,
+              and build a publish preview before later real save and approval workflows are introduced.
             </p>
           </div>
 
@@ -1397,7 +1540,7 @@ export default function AdminPage() {
             <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
               <div style={{ ...badge("green"), marginBottom: "12px" }}>Phase 4 draft workflow</div>
               <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
-                Working draft editor + validation preview
+Working draft editor + review gate + publish preview
               </div>
 
               <div
@@ -1410,12 +1553,18 @@ export default function AdminPage() {
               >
                 <div style={{ ...softCardStyle, display: "grid", gap: "14px" }}>
                   <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>
-                    Edit a working draft safely and validate it against basic admin rules. This does not save changes into the live legal catalog yet.
+                    Edit a working draft safely, validate it, run a review gate, and build a publish preview. This still does not save changes into the live legal catalog yet.
                   </div>
 
                   <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                     <button type="button" onClick={validateDraft} style={secondaryButton} disabled={!draftForm || draftLoading}>
                       {draftLoading ? "Validating..." : "Validate draft"}
+                    </button>
+                    <button type="button" onClick={runDraftReview} style={secondaryButton} disabled={!draftForm || reviewLoading}>
+                      {reviewLoading ? "Reviewing..." : "Run review gate"}
+                    </button>
+                    <button type="button" onClick={buildPublishPreview} style={secondaryButton} disabled={!draftForm || publishLoading}>
+                      {publishLoading ? "Building..." : "Build publish preview"}
                     </button>
                     <button type="button" onClick={resetDraftFromSelected} style={secondaryButton} disabled={!detail}>
                       Reset from selected
@@ -1600,6 +1749,166 @@ export default function AdminPage() {
                           )) : <span style={{ color: "#c6d3f3" }}>No searchable terms available yet.</span>}
                         </div>
                       </div>
+
+
+
+                      {reviewError && (
+                        <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                          Failed to run review gate: {reviewError}
+                        </div>
+                      )}
+
+                      {!draftReview ? (
+                        <div style={softCardStyle}>Run the review gate to see blockers, warnings, and changed-field scope before publish preview.</div>
+                      ) : (
+                        <>
+                          <div style={softCardStyle}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
+                              <div style={{ ...badge(toneFromStatus(draftReview.review_status)) }}>{prettyKind(draftReview.review_status)}</div>
+                              <div style={{ color: "#dfe7ff", fontWeight: 700 }}>{draftReview.approval_label}</div>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "12px" }}>
+                              <div style={softCardStyle}>
+                                <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Review score</div>
+                                <div style={{ fontSize: "28px", fontWeight: 800 }}>{draftReview.readiness_score}</div>
+                              </div>
+                              <div style={softCardStyle}>
+                                <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Blockers</div>
+                                <div style={{ fontSize: "28px", fontWeight: 800 }}>{draftReview.blocker_count}</div>
+                              </div>
+                              <div style={softCardStyle}>
+                                <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Warnings</div>
+                                <div style={{ fontSize: "28px", fontWeight: 800 }}>{draftReview.warning_count}</div>
+                              </div>
+                              <div style={softCardStyle}>
+                                <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Changed fields</div>
+                                <div style={{ fontSize: "28px", fontWeight: 800 }}>{draftReview.changed_field_count}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={softCardStyle}>
+                            <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#a9c1ff", marginBottom: "12px" }}>
+                              Review checklist
+                            </div>
+                            <div style={{ display: "grid", gap: "10px" }}>
+                              {draftReview.checklist.map((item) => (
+                                <div key={item.key} style={{ ...softCardStyle, padding: "14px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "6px" }}>
+                                    <div style={badge(toneFromStatus(item.status))}>{prettyKind(item.status)}</div>
+                                    <div style={{ color: "#ffffff", fontWeight: 700 }}>{item.title}</div>
+                                  </div>
+                                  <div style={{ color: "#dbe4ff", lineHeight: 1.6 }}>{item.detail}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div style={softCardStyle}>
+                            <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#a9c1ff", marginBottom: "12px" }}>
+                              Changed fields
+                            </div>
+                            {draftReview.changed_fields.length === 0 ? (
+                              <div style={{ color: "#c6d3f3" }}>No changed fields detected yet.</div>
+                            ) : (
+                              <div style={{ display: "grid", gap: "10px" }}>
+                                {draftReview.changed_fields.map((item) => (
+                                  <div key={item.field} style={{ ...softCardStyle, padding: "14px" }}>
+                                    <div style={{ color: "#ffffff", fontWeight: 700, marginBottom: "8px" }}>{item.label}</div>
+                                    <div style={{ color: "#aac0ff", fontSize: "13px", marginBottom: "6px" }}>Before</div>
+                                    <div style={{ color: "#dbe4ff", lineHeight: 1.6, marginBottom: "10px" }}>{item.before || "—"}</div>
+                                    <div style={{ color: "#aac0ff", fontSize: "13px", marginBottom: "6px" }}>After</div>
+                                    <div style={{ color: "#dbe4ff", lineHeight: 1.6 }}>{item.after || "—"}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {publishError && (
+                        <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                          Failed to build publish preview: {publishError}
+                        </div>
+                      )}
+
+                      {!publishPreview ? (
+                        <div style={softCardStyle}>Build the publish preview to inspect context impact and remaining blockers before a future real save workflow exists.</div>
+                      ) : (
+                        <>
+                          <div style={softCardStyle}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
+                              <div style={{ ...badge(toneFromStatus(publishPreview.publish_status)) }}>{prettyKind(publishPreview.publish_status)}</div>
+                              <div style={{ color: "#dfe7ff", fontWeight: 700 }}>{prettyKind(publishPreview.publish_mode)}</div>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "12px" }}>
+                              <div style={softCardStyle}>
+                                <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Search terms</div>
+                                <div style={{ fontSize: "28px", fontWeight: 800 }}>{publishPreview.searchable_term_count}</div>
+                              </div>
+                              <div style={softCardStyle}>
+                                <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Linked sections</div>
+                                <div style={{ fontSize: "28px", fontWeight: 800 }}>{publishPreview.linked_section_count}</div>
+                              </div>
+                              <div style={softCardStyle}>
+                                <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Same-law context</div>
+                                <div style={{ fontSize: "28px", fontWeight: 800 }}>{publishPreview.same_law_context_count}</div>
+                              </div>
+                              <div style={softCardStyle}>
+                                <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Companion hits</div>
+                                <div style={{ fontSize: "28px", fontWeight: 800 }}>{publishPreview.companion_hit_count}</div>
+                              </div>
+                            </div>
+                            <div style={{ color: "#dbe4ff", lineHeight: 1.7, marginTop: "14px" }}>
+                              <strong style={{ color: "#ffffff" }}>Target record:</strong>{" "}
+                              {publishPreview.target_record_id || "New draft record"}
+                            </div>
+                          </div>
+
+                          <div style={softCardStyle}>
+                            <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#a9c1ff", marginBottom: "12px" }}>
+                              Publish blockers and warnings
+                            </div>
+                            <div style={{ display: "grid", gap: "10px" }}>
+                              {publishPreview.blockers.length === 0 && publishPreview.warnings.length === 0 ? (
+                                <div style={{ color: "#bdf3d8" }}>No publish blockers or warnings surfaced by the current prototype checks.</div>
+                              ) : (
+                                <>
+                                  {publishPreview.blockers.map((item, index) => (
+                                    <div key={`blocker-${index}`} style={{ ...softCardStyle, padding: "14px", border: "1px solid rgba(255, 120, 120, 0.22)" }}>
+                                      <div style={{ ...badge("pink"), marginBottom: "8px" }}>BLOCKER</div>
+                                      <div style={{ color: "#dbe4ff", lineHeight: 1.6 }}>{item}</div>
+                                    </div>
+                                  ))}
+                                  {publishPreview.warnings.map((item, index) => (
+                                    <div key={`warning-${index}`} style={{ ...softCardStyle, padding: "14px", border: "1px solid rgba(255, 196, 102, 0.20)" }}>
+                                      <div style={{ ...badge("blue"), marginBottom: "8px" }}>WARNING</div>
+                                      <div style={{ color: "#dbe4ff", lineHeight: 1.6 }}>{item}</div>
+                                    </div>
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={softCardStyle}>
+                            <div style={{ fontSize: "13px", fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "#a9c1ff", marginBottom: "12px" }}>
+                              Recommended actions
+                            </div>
+                            <div style={{ display: "grid", gap: "8px" }}>
+                              {publishPreview.recommended_actions.map((item, index) => (
+                                <div key={`${item}-${index}`} style={{ color: "#dbe4ff", lineHeight: 1.6 }}>• {item}</div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div style={{ background: "linear-gradient(180deg, rgba(20, 36, 74, 0.96), rgba(12, 21, 45, 0.96))", border: "1px solid rgba(126, 162, 255, 0.18)", borderRadius: "18px", padding: "18px" }}>
+                            <div style={{ fontSize: "15px", fontWeight: 700, marginBottom: "10px" }}>Publish preview note</div>
+                            <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{publishPreview.workflow_note}</div>
+                          </div>
+                        </>
+                      )}
 
                       <div style={{ background: "linear-gradient(180deg, rgba(20, 36, 74, 0.96), rgba(12, 21, 45, 0.96))", border: "1px solid rgba(126, 162, 255, 0.18)", borderRadius: "18px", padding: "18px" }}>
                         <div style={{ fontSize: "15px", fontWeight: 700, marginBottom: "10px" }}>Draft workflow note</div>

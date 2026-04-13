@@ -3,8 +3,11 @@ from collections import Counter
 from app.data.legal_sources import LEGAL_SOURCES
 from app.data.officer_authority import OFFICER_AUTHORITY_DATA
 from app.schemas.admin import (
+    AdminDraftFieldChange,
     AdminDraftSectionCheck,
     AdminDraftValidationIssue,
+    AdminLinkedRecord,
+    AdminReviewChecklistItem,
     AdminRoadmapItem,
     AdminSourceCatalogResponse,
     AdminSourceCatalogSummary,
@@ -12,12 +15,13 @@ from app.schemas.admin import (
     AdminSourceDetailResponse,
     AdminSourceDraftInput,
     AdminSourceDraftPreview,
+    AdminSourceDraftReviewResponse,
     AdminSourceDraftValidationResponse,
+    AdminSourcePublishPreviewResponse,
     AdminSourceRecord,
     AdminStat,
     AdminStatusCard,
     AdminSummaryResponse,
-    AdminLinkedRecord,
 )
 from app.schemas.legal_source import LegalSourceRecord
 
@@ -491,5 +495,315 @@ def validate_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDr
         workflow_note=(
             "This validation flow checks draft completeness and relationship hygiene without changing the live in-memory catalog. "
             "Treat it as a preparation step before future real save, review, and publish workflows are added."
+        ),
+    )
+
+
+FIELD_LABELS = {
+    "source_title": "Source title",
+    "law_name": "Law name",
+    "section_number": "Section number",
+    "section_title": "Section title",
+    "summary": "Summary",
+    "excerpt": "Excerpt",
+    "citation_label": "Citation label",
+    "jurisdiction": "Jurisdiction",
+    "provision_kind": "Provision kind",
+    "offence_group": "Offence group",
+    "punishment_summary": "Punishment summary",
+    "tags": "Tags",
+    "aliases": "Aliases",
+    "keywords": "Keywords",
+    "related_sections": "Related sections",
+}
+
+REQUIRED_REVIEW_FIELDS = {
+    "source_title",
+    "law_name",
+    "section_number",
+    "section_title",
+    "summary",
+    "excerpt",
+}
+
+
+def _stringify_change_value(value: str | list[str] | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return ", ".join(value)
+    return value
+
+
+def _record_to_draft(record: LegalSourceRecord) -> AdminSourceDraftInput:
+    return AdminSourceDraftInput(
+        id=record.id,
+        source_title=record.source_title,
+        law_name=record.law_name,
+        section_number=record.section_number,
+        section_title=record.section_title,
+        summary=record.summary,
+        excerpt=record.excerpt,
+        citation_label=record.citation_label,
+        jurisdiction=record.jurisdiction,
+        tags=list(record.tags),
+        aliases=list(record.aliases),
+        keywords=list(record.keywords),
+        related_sections=list(record.related_sections),
+        offence_group=record.offence_group,
+        punishment_summary=record.punishment_summary,
+        provision_kind=record.provision_kind,
+    )
+
+
+def _empty_draft_baseline() -> AdminSourceDraftInput:
+    return AdminSourceDraftInput(
+        source_title="",
+        law_name="",
+        section_number="",
+        section_title="",
+        summary="",
+        excerpt="",
+        citation_label="",
+        jurisdiction="Pakistan",
+        tags=[],
+        aliases=[],
+        keywords=[],
+        related_sections=[],
+        offence_group=None,
+        punishment_summary=None,
+        provision_kind="general",
+    )
+
+
+def _compare_draft_fields(payload: AdminSourceDraftInput, existing_record: LegalSourceRecord | None) -> list[AdminDraftFieldChange]:
+    baseline = _record_to_draft(existing_record) if existing_record else _empty_draft_baseline()
+    changes: list[AdminDraftFieldChange] = []
+
+    for field, label in FIELD_LABELS.items():
+        before_value = _stringify_change_value(getattr(baseline, field))
+        after_value = _stringify_change_value(getattr(payload, field))
+        changed = before_value != after_value
+        if not changed and existing_record is not None:
+            continue
+        if not changed and not after_value and existing_record is None:
+            continue
+        changes.append(
+            AdminDraftFieldChange(
+                field=field,
+                label=label,
+                before=before_value or None,
+                after=after_value or None,
+                changed=changed,
+            )
+        )
+
+    return changes
+
+
+def _collect_issue_messages(issues: list[AdminDraftValidationIssue], *, level: str | None = None, fields: set[str] | None = None) -> list[str]:
+    collected: list[str] = []
+    for issue in issues:
+        if level and issue.level != level:
+            continue
+        if fields and issue.field not in fields:
+            continue
+        collected.append(issue.message)
+    return collected
+
+
+def _status_from_issues(blockers: list[str], warnings: list[str]) -> str:
+    if blockers:
+        return "block"
+    if warnings:
+        return "warning"
+    return "pass"
+
+
+def _build_review_checklist(
+    payload: AdminSourceDraftInput,
+    issues: list[AdminDraftValidationIssue],
+    related_section_check: AdminDraftSectionCheck,
+    changed_fields: list[AdminDraftFieldChange],
+) -> list[AdminReviewChecklistItem]:
+    retrieval_fields = {"tags", "aliases", "keywords"}
+    relationship_fields = {"related_sections"}
+    pairing_fields = {"offence_group", "punishment_summary", "provision_kind"}
+    context_fields = {"law_name"}
+
+    core_blockers = _collect_issue_messages(issues, level="error", fields=REQUIRED_REVIEW_FIELDS)
+    core_warnings = _collect_issue_messages(issues, level="warning", fields=REQUIRED_REVIEW_FIELDS)
+    retrieval_warnings = _collect_issue_messages(issues, level="warning", fields=retrieval_fields)
+    relationship_warnings = _collect_issue_messages(issues, level="warning", fields=relationship_fields)
+    pairing_warnings = _collect_issue_messages(issues, level="warning", fields=pairing_fields)
+    context_warnings = _collect_issue_messages(issues, level="warning", fields=context_fields)
+
+    change_detail = (
+        f"{len(changed_fields)} changed field(s) detected against the live catalog record."
+        if payload.id
+        else f"{len(changed_fields)} populated field(s) prepared for a new record draft."
+    )
+    if payload.id and len(changed_fields) == 0:
+        change_detail = "No field changes were detected against the selected live record."
+
+    return [
+        AdminReviewChecklistItem(
+            key="core_fields",
+            title="Core field completeness",
+            status=_status_from_issues(core_blockers, core_warnings),
+            detail=(
+                "; ".join(core_blockers or core_warnings)
+                if (core_blockers or core_warnings)
+                else "Core section identity, summary, and excerpt fields are present."
+            ),
+        ),
+        AdminReviewChecklistItem(
+            key="retrieval_metadata",
+            title="Retrieval metadata strength",
+            status=_status_from_issues([], retrieval_warnings),
+            detail=(
+                "; ".join(retrieval_warnings)
+                if retrieval_warnings
+                else "Tags, aliases, and keywords look usable for prototype retrieval and admin filtering."
+            ),
+        ),
+        AdminReviewChecklistItem(
+            key="section_relationships",
+            title="Section relationship hygiene",
+            status=_status_from_issues([], relationship_warnings),
+            detail=(
+                "; ".join(relationship_warnings)
+                if relationship_warnings
+                else (
+                    f"{len(related_section_check.existing)} linked section(s) confirmed under the selected law."
+                    if related_section_check.existing
+                    else "No broken related-section links detected in the current draft."
+                )
+            ),
+        ),
+        AdminReviewChecklistItem(
+            key="kind_pairing",
+            title="Provision kind pairing",
+            status=_status_from_issues([], pairing_warnings),
+            detail=(
+                "; ".join(pairing_warnings)
+                if pairing_warnings
+                else "Provision kind, offence grouping, and punishment-pairing signals look internally consistent."
+            ),
+        ),
+        AdminReviewChecklistItem(
+            key="catalog_context",
+            title="Catalog context fit",
+            status=_status_from_issues([], context_warnings),
+            detail=(
+                "; ".join(context_warnings)
+                if context_warnings
+                else "The draft fits the current prototype catalog context and can be reviewed against same-law records."
+            ),
+        ),
+        AdminReviewChecklistItem(
+            key="change_scope",
+            title="Change scope",
+            status=("warning" if payload.id and len(changed_fields) == 0 else "pass"),
+            detail=change_detail,
+        ),
+    ]
+
+
+def _context_counts(payload: AdminSourceDraftInput) -> tuple[int, int, int]:
+    companion_hit_count = sum(
+        1
+        for record in LEGAL_SOURCES
+        if record.law_name == payload.law_name and record.section_number in payload.related_sections
+    )
+    same_group_context_count = sum(
+        1 for record in LEGAL_SOURCES if payload.offence_group and record.offence_group == payload.offence_group
+    )
+    same_law_context_count = sum(1 for record in LEGAL_SOURCES if record.law_name == payload.law_name)
+    return companion_hit_count, same_group_context_count, same_law_context_count
+
+
+def review_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftReviewResponse:
+    normalized = _normalize_draft(payload)
+    issues, related_section_check = _validate_draft(normalized)
+    existing_record = RECORD_INDEX.get(normalized.id) if normalized.id else None
+    changed_fields = _compare_draft_fields(normalized, existing_record)
+    checklist = _build_review_checklist(normalized, issues, related_section_check, changed_fields)
+
+    blocker_count = sum(1 for issue in issues if issue.level == "error")
+    warning_count = sum(1 for issue in issues if issue.level == "warning")
+    publish_mode = "update_existing_record" if existing_record else "create_new_record"
+
+    if blocker_count > 0:
+        review_status = "blocked"
+        approval_label = "Blocked before publish preview"
+    elif warning_count > 0 or (existing_record is not None and len(changed_fields) == 0):
+        review_status = "needs_review"
+        approval_label = "Needs reviewer attention"
+    else:
+        review_status = "ready"
+        approval_label = "Ready for publish preview"
+
+    readiness_score = max(0, min(100, 100 - blocker_count * 18 - warning_count * 6 - (0 if changed_fields else 4)))
+
+    return AdminSourceDraftReviewResponse(
+        review_status=review_status,
+        approval_label=approval_label,
+        readiness_score=readiness_score,
+        blocker_count=blocker_count,
+        warning_count=warning_count,
+        publish_mode=publish_mode,
+        changed_field_count=sum(1 for item in changed_fields if item.changed),
+        changed_fields=[item for item in changed_fields if item.changed],
+        checklist=checklist,
+        workflow_note=(
+            "This review gate is still prototype-only. It compares the working draft against the live in-memory record, surfaces blockers and review warnings, and prepares the draft for a later real approval or publish workflow without persisting any change yet."
+        ),
+    )
+
+
+def build_admin_source_publish_preview(payload: AdminSourceDraftInput) -> AdminSourcePublishPreviewResponse:
+    normalized = _normalize_draft(payload)
+    issues, _related_section_check = _validate_draft(normalized)
+    existing_record = RECORD_INDEX.get(normalized.id) if normalized.id else None
+    changed_fields = _compare_draft_fields(normalized, existing_record)
+    blocker_messages = _collect_issue_messages(issues, level="error")
+    warning_messages = _collect_issue_messages(issues, level="warning")
+
+    if existing_record is not None and not any(item.changed for item in changed_fields):
+        warning_messages.append("No changed fields were detected against the selected live record.")
+
+    searchable_term_count = len(_build_draft_preview(normalized).searchable_terms)
+    companion_hit_count, same_group_context_count, same_law_context_count = _context_counts(normalized)
+    linked_section_count = len(normalized.related_sections)
+
+    recommended_actions: list[str] = []
+    if blocker_messages:
+        recommended_actions.append("Resolve validation blockers before attempting a real save or publish workflow.")
+    if any(issue.field in {"tags", "aliases", "keywords"} for issue in issues if issue.level == "warning"):
+        recommended_actions.append("Strengthen aliases, keywords, and tags so retrieval quality does not regress after publishing.")
+    if any(issue.field == "related_sections" for issue in issues if issue.level == "warning"):
+        recommended_actions.append("Review broken related sections so overlap handling remains trustworthy.")
+    if normalized.provision_kind == "punishment" and not normalized.punishment_summary:
+        recommended_actions.append("Add a clearer punishment summary so admin reviewers can see the pairing intent quickly.")
+    if not recommended_actions:
+        recommended_actions.append("Use this publish preview as the final handoff artifact before persistence and approval states are added.")
+
+    return AdminSourcePublishPreviewResponse(
+        publish_status=("blocked" if blocker_messages else "preview_ready"),
+        publish_mode=("update_existing_record" if existing_record else "create_new_record"),
+        target_record_id=existing_record.id if existing_record else (normalized.id or None),
+        changed_field_count=sum(1 for item in changed_fields if item.changed),
+        searchable_term_count=searchable_term_count,
+        linked_section_count=linked_section_count,
+        companion_hit_count=companion_hit_count,
+        same_group_context_count=same_group_context_count,
+        same_law_context_count=same_law_context_count,
+        blockers=blocker_messages,
+        warnings=warning_messages,
+        recommended_actions=recommended_actions,
+        changed_fields=[item for item in changed_fields if item.changed],
+        workflow_note=(
+            "This publish preview does not mutate the live catalog. It estimates how the draft would land inside the current prototype source library so an admin can review impact, context, and remaining risks before real persistence exists."
         ),
     )

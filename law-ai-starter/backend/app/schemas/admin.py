@@ -143,3 +143,49 @@ class AdminSourceDraftValidationResponse(BaseModel):
     issues: list[AdminDraftValidationIssue] = Field(default_factory=list)
     related_section_check: AdminDraftSectionCheck
     workflow_note: str
+
+
+
+class AdminDraftFieldChange(BaseModel):
+    field: str
+    label: str
+    before: str | None = None
+    after: str | None = None
+    changed: bool
+
+
+class AdminReviewChecklistItem(BaseModel):
+    key: str
+    title: str
+    status: str
+    detail: str
+
+
+class AdminSourceDraftReviewResponse(BaseModel):
+    review_status: str
+    approval_label: str
+    readiness_score: int
+    blocker_count: int
+    warning_count: int
+    publish_mode: str
+    changed_field_count: int
+    changed_fields: list[AdminDraftFieldChange] = Field(default_factory=list)
+    checklist: list[AdminReviewChecklistItem] = Field(default_factory=list)
+    workflow_note: str
+
+
+class AdminSourcePublishPreviewResponse(BaseModel):
+    publish_status: str
+    publish_mode: str
+    target_record_id: str | None = None
+    changed_field_count: int
+    searchable_term_count: int
+    linked_section_count: int
+    companion_hit_count: int
+    same_group_context_count: int
+    same_law_context_count: int
+    blockers: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
+    changed_fields: list[AdminDraftFieldChange] = Field(default_factory=list)
+    workflow_note: str
