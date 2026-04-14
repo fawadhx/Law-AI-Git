@@ -703,6 +703,9 @@ export default function AdminPage() {
   const [embeddingRunLoading, setEmbeddingRunLoading] = useState(false);
   const [embeddingRunLimit, setEmbeddingRunLimit] = useState("10");
   const [embeddingRunNote, setEmbeddingRunNote] = useState("");
+  const [selectedEmbeddingRunLoading, setSelectedEmbeddingRunLoading] = useState(false);
+  const [selectedEmbeddingRunNote, setSelectedEmbeddingRunNote] = useState("");
+  const [selectedEmbeddingRunError, setSelectedEmbeddingRunError] = useState("");
 
   async function loadAdminSnapshot(preferredSourceId?: string) {
     try {
@@ -946,6 +949,50 @@ export default function AdminPage() {
     }
   }
 
+  async function runSelectedEmbeddingGeneration() {
+    if (!selectedSourceId) {
+      return;
+    }
+
+    try {
+      setSelectedEmbeddingRunLoading(true);
+      setSelectedEmbeddingRunNote("");
+      setSelectedEmbeddingRunError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/embedding-readiness/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          limit: 1,
+          record_ids: [selectedSourceId],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Selected embedding run failed with status ${response.status}`);
+      }
+
+      const result: AdminEmbeddingRunResponse = await response.json();
+      setSelectedEmbeddingRunNote(result.workflow_note);
+
+      await Promise.all([
+        loadEmbeddingReadiness(),
+        loadRetrievalReadiness(),
+        loadAdminSnapshot(selectedSourceId),
+        loadSourceDetail(selectedSourceId),
+        loadActivity(),
+      ]);
+    } catch (err) {
+      if (err instanceof Error) {
+        setSelectedEmbeddingRunError(err.message || "Failed to run selected embedding refresh.");
+      }
+    } finally {
+      setSelectedEmbeddingRunLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadAdminSnapshot();
     loadWorkspace();
@@ -1053,6 +1100,8 @@ export default function AdminPage() {
     setPersistUpdateError("");
     setDeleteResult(null);
     setDeleteError("");
+    setSelectedEmbeddingRunNote("");
+    setSelectedEmbeddingRunError("");
   }, [detail]);
 
   async function validateDraft() {
@@ -3093,6 +3142,9 @@ Working draft editor + review gate + publish preview
                     <button type="button" onClick={submitDeleteSource} style={secondaryButton} disabled={!selectedSourceId || deleteLoading}>
                       {deleteLoading ? "Deleting..." : "Delete source"}
                     </button>
+                    <button type="button" onClick={runSelectedEmbeddingGeneration} style={secondaryButton} disabled={!selectedSourceId || selectedEmbeddingRunLoading}>
+                      {selectedEmbeddingRunLoading ? "Running..." : "Run selected embedding"}
+                    </button>
                     <button type="button" onClick={saveDraftToWorkspace} style={secondaryButton} disabled={!draftForm || workspaceBusy}>
                       {workspaceBusy ? "Working..." : workspaceDraftId ? "Update workspace draft" : "Save to workspace"}
                     </button>
@@ -3265,6 +3317,16 @@ Working draft editor + review gate + publish preview
                         </div>
                       )}
                     </div>
+                  )}
+
+                  {selectedEmbeddingRunError && (
+                    <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                      Failed to run selected embedding refresh: {selectedEmbeddingRunError}
+                    </div>
+                  )}
+
+                  {selectedEmbeddingRunNote && (
+                    <div style={{ ...softCardStyle, color: "#dbe4ff", lineHeight: 1.7 }}>{selectedEmbeddingRunNote}</div>
                   )}
 
                   {!draftValidation ? (
