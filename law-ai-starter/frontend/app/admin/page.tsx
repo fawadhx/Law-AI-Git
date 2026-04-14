@@ -667,6 +667,9 @@ export default function AdminPage() {
   const [persistUpdateLoading, setPersistUpdateLoading] = useState(false);
   const [persistUpdateError, setPersistUpdateError] = useState("");
   const [persistUpdateResult, setPersistUpdateResult] = useState<AdminSourceUpdateResponse | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleteResult, setDeleteResult] = useState<AdminSourceDeleteResponse | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [draftValidation, setDraftValidation] = useState<AdminSourceDraftValidationResponse | null>(null);
@@ -1048,6 +1051,8 @@ export default function AdminPage() {
     setPublishError("");
     setPersistUpdateResult(null);
     setPersistUpdateError("");
+    setDeleteResult(null);
+    setDeleteError("");
   }, [detail]);
 
   async function validateDraft() {
@@ -1427,6 +1432,48 @@ export default function AdminPage() {
       }
     } finally {
       setPersistUpdateLoading(false);
+    }
+  }
+
+  async function submitDeleteSource() {
+    if (!selectedSourceId) {
+      return;
+    }
+
+    const confirmation = window.confirm("Delete this legal source record from the active store?");
+    if (!confirmation) {
+      return;
+    }
+
+    try {
+      setDeleteLoading(true);
+      setDeleteError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/source-records/${selectedSourceId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Delete request failed with status ${response.status}`);
+      }
+
+      const result: AdminSourceDeleteResponse = await response.json();
+      setDeleteResult(result);
+
+      if (result.delete_status === "deleted") {
+        await Promise.all([
+          loadAdminSnapshot(),
+          loadRetrievalReadiness(),
+          loadEmbeddingReadiness(),
+          loadActivity(),
+        ]);
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        setDeleteError(err.message || "Failed to delete source record.");
+      }
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -3043,6 +3090,9 @@ Working draft editor + review gate + publish preview
                     <button type="button" onClick={submitPersistedUpdate} style={secondaryButton} disabled={!draftForm || !selectedSourceId || persistUpdateLoading}>
                       {persistUpdateLoading ? "Saving..." : "Save persisted edit"}
                     </button>
+                    <button type="button" onClick={submitDeleteSource} style={secondaryButton} disabled={!selectedSourceId || deleteLoading}>
+                      {deleteLoading ? "Deleting..." : "Delete source"}
+                    </button>
                     <button type="button" onClick={saveDraftToWorkspace} style={secondaryButton} disabled={!draftForm || workspaceBusy}>
                       {workspaceBusy ? "Working..." : workspaceDraftId ? "Update workspace draft" : "Save to workspace"}
                     </button>
@@ -3183,6 +3233,37 @@ Working draft editor + review gate + publish preview
                         <div style={chipStyle}>Errors {persistUpdateResult.validation.error_count}</div>
                         <div style={chipStyle}>Warnings {persistUpdateResult.validation.warning_count}</div>
                       </div>
+                    </div>
+                  )}
+
+                  {deleteError && (
+                    <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                      Failed to delete source record: {deleteError}
+                    </div>
+                  )}
+
+                  {deleteResult && (
+                    <div style={{ ...softCardStyle, display: "grid", gap: "12px" }}>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <div style={badge(deleteResult.delete_status === "deleted" ? "green" : "pink")}>
+                          {prettyKind(deleteResult.delete_status)}
+                        </div>
+                        <div style={badge(deleteResult.save_mode === "database" ? "green" : "blue")}>
+                          Save mode: {prettyKind(deleteResult.save_mode)}
+                        </div>
+                        {deleteResult.record_id && <div style={badge()}>Record id: {deleteResult.record_id}</div>}
+                      </div>
+
+                      <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>
+                        {deleteResult.workflow_note}
+                      </div>
+
+                      {deleteResult.deleted_title && (
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <div style={chipStyle}>Deleted title</div>
+                          <div style={chipStyle}>{deleteResult.deleted_title}</div>
+                        </div>
+                      )}
                     </div>
                   )}
 
