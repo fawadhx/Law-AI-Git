@@ -664,6 +664,7 @@ export default function AdminPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createResult, setCreateResult] = useState<AdminSourceCreateResponse | null>(null);
+  const [createTemplateNote, setCreateTemplateNote] = useState("");
   const [persistUpdateLoading, setPersistUpdateLoading] = useState(false);
   const [persistUpdateError, setPersistUpdateError] = useState("");
   const [persistUpdateResult, setPersistUpdateResult] = useState<AdminSourceUpdateResponse | null>(null);
@@ -1402,6 +1403,24 @@ export default function AdminPage() {
       ...current,
       [field]: value,
     }));
+    setCreateTemplateNote("");
+  }
+
+  function copyDraftToCreateForm() {
+    if (!draftForm) {
+      return;
+    }
+
+    setCreateForm({
+      ...draftForm,
+      id: "",
+      citation_label: "",
+    });
+    setCreateResult(null);
+    setCreateError("");
+    setCreateTemplateNote(
+      "Loaded the current source draft into the create workflow as a template. Review id and citation label before saving."
+    );
   }
 
   async function submitCreateRecord() {
@@ -1432,6 +1451,7 @@ export default function AdminPage() {
           loadActivity(),
         ]);
         setCreateForm(createEmptyDraftForm());
+        setCreateTemplateNote("");
       }
     } catch (err) {
       if (err instanceof Error) {
@@ -2007,12 +2027,22 @@ export default function AdminPage() {
                 <button type="button" onClick={() => submitCreateRecord()} style={secondaryButton} disabled={createLoading}>
                   {createLoading ? "Creating..." : "Create source record"}
                 </button>
-                <button type="button" onClick={() => { setCreateForm(createEmptyDraftForm()); setCreateResult(null); setCreateError(""); }} style={secondaryButton} disabled={createLoading}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateForm(createEmptyDraftForm());
+                    setCreateResult(null);
+                    setCreateError("");
+                    setCreateTemplateNote("");
+                  }}
+                  style={secondaryButton}
+                  disabled={createLoading}
+                >
                   Reset form
                 </button>
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
                     setCreateForm({
                       id: "",
                       source_title: "Pakistan Penal Code",
@@ -2030,14 +2060,21 @@ export default function AdminPage() {
                       aliases_text: "criminal threat",
                       keywords_text: "blackmail, threat, fear",
                       related_sections_text: "506",
-                    })
-                  }
+                    });
+                    setCreateTemplateNote("");
+                  }}
                   style={secondaryButton}
                   disabled={createLoading}
                 >
                   Load sample
                 </button>
               </div>
+
+              {createTemplateNote && (
+                <div style={{ ...softCardStyle, color: "#dbe4ff", lineHeight: 1.7, marginBottom: "16px" }}>
+                  {createTemplateNote}
+                </div>
+              )}
 
               {createError && (
                 <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1", marginBottom: "16px" }}>
@@ -3144,6 +3181,9 @@ Working draft editor + review gate + publish preview
                     </button>
                     <button type="button" onClick={runSelectedEmbeddingGeneration} style={secondaryButton} disabled={!selectedSourceId || selectedEmbeddingRunLoading}>
                       {selectedEmbeddingRunLoading ? "Running..." : "Run selected embedding"}
+                    </button>
+                    <button type="button" onClick={copyDraftToCreateForm} style={secondaryButton} disabled={!draftForm}>
+                      Copy to create form
                     </button>
                     <button type="button" onClick={saveDraftToWorkspace} style={secondaryButton} disabled={!draftForm || workspaceBusy}>
                       {workspaceBusy ? "Working..." : workspaceDraftId ? "Update workspace draft" : "Save to workspace"}
