@@ -568,6 +568,27 @@ function textToList(value: string) {
     .filter(Boolean);
 }
 
+function createEmptyDraftForm(): AdminDraftForm {
+  return {
+    id: "",
+    source_title: "",
+    law_name: "",
+    section_number: "",
+    section_title: "",
+    summary: "",
+    excerpt: "",
+    citation_label: "",
+    jurisdiction: "Pakistan",
+    provision_kind: "general",
+    offence_group: "",
+    punishment_summary: "",
+    tags_text: "",
+    aliases_text: "",
+    keywords_text: "",
+    related_sections_text: "",
+  };
+}
+
 function detailToDraft(detail: AdminSourceDetailResponse): AdminDraftForm {
   return {
     id: detail.item.id,
@@ -639,6 +660,10 @@ export default function AdminPage() {
   const [selectedGroup, setSelectedGroup] = useState("all");
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [draftForm, setDraftForm] = useState<AdminDraftForm | null>(null);
+  const [createForm, setCreateForm] = useState<AdminDraftForm>(createEmptyDraftForm());
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createResult, setCreateResult] = useState<AdminSourceCreateResponse | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [draftValidation, setDraftValidation] = useState<AdminSourceDraftValidationResponse | null>(null);
@@ -1706,6 +1731,175 @@ export default function AdminPage() {
                 </div>
               </section>
             </div>
+
+            <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
+              <div style={{ ...badge("green"), marginBottom: "12px" }}>Phase 6 create workflow</div>
+              <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
+                Create a persisted legal source record
+              </div>
+
+              <div style={{ color: "#dbe4ff", lineHeight: 1.7, marginBottom: "18px", maxWidth: "980px" }}>
+                This is the first database-backed creation form for admin. Submit a new legal source draft here and the backend will validate it, build retrieval metadata, and save it to the database when persistence is available.
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "16px" }}>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Optional custom id</div>
+                  <input value={createForm.id} onChange={(event) => updateCreateField("id", event.target.value)} style={fieldStyle} placeholder="auto-generated if empty" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Source title</div>
+                  <input value={createForm.source_title} onChange={(event) => updateCreateField("source_title", event.target.value)} style={fieldStyle} placeholder="Pakistan Penal Code" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Law name</div>
+                  <input value={createForm.law_name} onChange={(event) => updateCreateField("law_name", event.target.value)} style={fieldStyle} placeholder="Pakistan Penal Code" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Section number</div>
+                  <input value={createForm.section_number} onChange={(event) => updateCreateField("section_number", event.target.value)} style={fieldStyle} placeholder="503" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Section title</div>
+                  <input value={createForm.section_title} onChange={(event) => updateCreateField("section_title", event.target.value)} style={fieldStyle} placeholder="Criminal intimidation" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Citation label</div>
+                  <input value={createForm.citation_label} onChange={(event) => updateCreateField("citation_label", event.target.value)} style={fieldStyle} placeholder="Pakistan Penal Code s. 503" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Jurisdiction</div>
+                  <input value={createForm.jurisdiction} onChange={(event) => updateCreateField("jurisdiction", event.target.value)} style={fieldStyle} placeholder="Pakistan" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Provision kind</div>
+                  <select value={createForm.provision_kind} onChange={(event) => updateCreateField("provision_kind", event.target.value)} style={fieldStyle}>
+                    <option value="general">General</option>
+                    <option value="punishment">Punishment</option>
+                    <option value="procedure">Procedure</option>
+                    <option value="authority">Authority</option>
+                    <option value="bailability">Bailability</option>
+                    <option value="fir_rule">FIR Rule</option>
+                    <option value="reporting">Reporting</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Offence group</div>
+                  <input value={createForm.offence_group} onChange={(event) => updateCreateField("offence_group", event.target.value)} style={fieldStyle} placeholder="Threats and intimidation" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Tags</div>
+                  <input value={createForm.tags_text} onChange={(event) => updateCreateField("tags_text", event.target.value)} style={fieldStyle} placeholder="threat, intimidation" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Aliases</div>
+                  <input value={createForm.aliases_text} onChange={(event) => updateCreateField("aliases_text", event.target.value)} style={fieldStyle} placeholder="criminal threat" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Keywords</div>
+                  <input value={createForm.keywords_text} onChange={(event) => updateCreateField("keywords_text", event.target.value)} style={fieldStyle} placeholder="blackmail, threat, fear" />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Related sections</div>
+                  <input value={createForm.related_sections_text} onChange={(event) => updateCreateField("related_sections_text", event.target.value)} style={fieldStyle} placeholder="506" />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: "12px", marginBottom: "16px" }}>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Summary</div>
+                  <textarea value={createForm.summary} onChange={(event) => updateCreateField("summary", event.target.value)} rows={3} style={{ ...fieldStyle, resize: "vertical", minHeight: "92px" }} />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Excerpt</div>
+                  <textarea value={createForm.excerpt} onChange={(event) => updateCreateField("excerpt", event.target.value)} rows={4} style={{ ...fieldStyle, resize: "vertical", minHeight: "110px" }} />
+                </div>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Punishment summary</div>
+                  <textarea value={createForm.punishment_summary} onChange={(event) => updateCreateField("punishment_summary", event.target.value)} rows={2} style={{ ...fieldStyle, resize: "vertical", minHeight: "74px" }} />
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "16px" }}>
+                <button type="button" onClick={() => submitCreateRecord()} style={secondaryButton} disabled={createLoading}>
+                  {createLoading ? "Creating..." : "Create source record"}
+                </button>
+                <button type="button" onClick={() => { setCreateForm(createEmptyDraftForm()); setCreateResult(null); setCreateError(""); }} style={secondaryButton} disabled={createLoading}>
+                  Reset form
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCreateForm({
+                      id: "",
+                      source_title: "Pakistan Penal Code",
+                      law_name: "Pakistan Penal Code",
+                      section_number: "503",
+                      section_title: "Criminal intimidation",
+                      summary: "Defines criminal intimidation and threat-based conduct used to cause alarm or compel action.",
+                      excerpt: "Whoever threatens another with injury to person, reputation, or property...",
+                      citation_label: "Pakistan Penal Code s. 503",
+                      jurisdiction: "Pakistan",
+                      provision_kind: "general",
+                      offence_group: "Threats and intimidation",
+                      punishment_summary: "Punishment is addressed in the linked punishment provision.",
+                      tags_text: "threat, intimidation",
+                      aliases_text: "criminal threat",
+                      keywords_text: "blackmail, threat, fear",
+                      related_sections_text: "506",
+                    })
+                  }
+                  style={secondaryButton}
+                  disabled={createLoading}
+                >
+                  Load sample
+                </button>
+              </div>
+
+              {createError && (
+                <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1", marginBottom: "16px" }}>
+                  {createError}
+                </div>
+              )}
+
+              {createResult && (
+                <div style={{ display: "grid", gap: "14px" }}>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <div style={badge(createResult.create_status === "created" ? "green" : "pink")}>
+                      {prettyKind(createResult.create_status)}
+                    </div>
+                    <div style={badge(createResult.save_mode === "database" ? "green" : "blue")}>
+                      Save mode: {prettyKind(createResult.save_mode)}
+                    </div>
+                    {createResult.record_id && <div style={badge()}>Record id: {createResult.record_id}</div>}
+                  </div>
+
+                  <div style={softCardStyle}>
+                    <div style={{ color: "#dbe4ff", lineHeight: 1.7, marginBottom: "10px" }}>{createResult.workflow_note}</div>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <div style={chipStyle}>Readiness {createResult.validation.readiness_score}</div>
+                      <div style={chipStyle}>Issues {createResult.validation.issue_count}</div>
+                      <div style={chipStyle}>Errors {createResult.validation.error_count}</div>
+                      <div style={chipStyle}>Warnings {createResult.validation.warning_count}</div>
+                    </div>
+                  </div>
+
+                  {createResult.validation.issues.length > 0 && (
+                    <div style={{ display: "grid", gap: "10px" }}>
+                      {createResult.validation.issues.map((issue, index) => (
+                        <div key={`${issue.field}-${index}`} style={softCardStyle}>
+                          <div style={{ ...badge(issue.level === "error" ? "pink" : "blue"), marginBottom: "8px" }}>
+                            {issue.level.toUpperCase()}
+                          </div>
+                          <div style={{ fontWeight: 700, marginBottom: "6px" }}>{issue.field}</div>
+                          <div style={{ color: "#dbe4ff", lineHeight: 1.65 }}>{issue.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
 
             <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
               <div style={{ ...badge(), marginBottom: "12px" }}>Phase 4 detail workflow</div>
