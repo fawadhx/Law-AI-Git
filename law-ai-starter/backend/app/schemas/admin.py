@@ -496,3 +496,18 @@ class AdminIngestionPreviewResponse(BaseModel):
     extracted_section_title: str = ""
     duplicate_candidates: list[AdminIngestionDuplicateCandidate] = Field(default_factory=list)
     workflow_note: str
+
+
+class AdminIngestionBatchPreviewRequest(BaseModel):
+    raw_text: str = ""
+    source_title: str = ""
+    law_name: str = ""
+    jurisdiction: str = "Pakistan"
+    citation_hint: str = ""
+    max_candidates: int = 5
+
+
+class AdminIngestionBatchPreviewResponse(BaseModel):
+    items: list[AdminIngestionPreviewResponse] = Field(default_factory=list)
+    item_count: int = 0
+    workflow_note: str

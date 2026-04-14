@@ -821,6 +821,49 @@ def _find_ingestion_duplicate_candidates(draft: AdminSourceDraftInput, limit: in
     return candidates
 
 
+
+
+def _split_ingestion_blocks(raw_text: str, max_candidates: int = 5) -> list[str]:
+    compact_text = (raw_text or "").strip()
+    if not compact_text:
+        return []
+
+    heading_pattern = re.compile(r"(?im)(?=^(?:section|article)\s+[0-9A-Za-z\-()/.]+)")
+    parts = [part.strip() for part in heading_pattern.split(compact_text) if part.strip()]
+
+    if len(parts) <= 1:
+        parts = [part.strip() for part in re.split(r"\n\s*\n+", compact_text) if part.strip()]
+
+    filtered = [part for part in parts if len(_compact_text(part)) >= 40]
+    return filtered[: max(1, max_candidates)]
+
+
+def preview_admin_ingestion_batch(payload: AdminIngestionBatchPreviewRequest) -> AdminIngestionBatchPreviewResponse:
+    blocks = _split_ingestion_blocks(payload.raw_text, max_candidates=payload.max_candidates)
+    items = [
+        preview_admin_ingestion(
+            AdminIngestionPreviewRequest(
+                raw_text=block,
+                source_title=payload.source_title,
+                law_name=payload.law_name,
+                jurisdiction=payload.jurisdiction,
+                citation_hint=payload.citation_hint,
+            )
+        )
+        for block in blocks
+    ]
+
+    return AdminIngestionBatchPreviewResponse(
+        items=items,
+        item_count=len(items),
+        workflow_note=(
+            "This extends Phase 7 ingestion so one pasted source can be split into multiple preview candidates. "
+            "It is useful when a copied law extract contains several sections or articles together. "
+            "No data is saved yet; this is still a preview-only workflow."
+        ),
+    )
+
+
 def preview_admin_ingestion(payload: AdminIngestionPreviewRequest) -> AdminIngestionPreviewResponse:
     raw_text = (payload.raw_text or "").strip()
     lines = _first_nonempty_lines(raw_text, limit=6)
