@@ -347,3 +347,60 @@ class AdminRetrievalRefreshResponse(BaseModel):
     embedding_pending_count: int
     sample_records: list[AdminRetrievalReadinessRecord] = Field(default_factory=list)
     workflow_note: str
+
+
+class AdminEmbeddingReadinessRecord(BaseModel):
+    record_id: str
+    citation_label: str
+    law_name: str
+    section_number: str
+    embedding_status: str
+    has_vector: bool
+    fingerprint_match: bool
+    model_name: str | None = None
+    dimensions: int | None = None
+    refresh_needed: bool
+    last_error: str | None = None
+
+
+class AdminEmbeddingReadinessResponse(BaseModel):
+    provider_ready: bool
+    api_key_configured: bool
+    active_source: str
+    source_label: str
+    database_ready: bool
+    foundation_stage: str
+    persisted_record_count: int
+    vector_row_count: int
+    ready_vector_count: int
+    pending_count: int
+    error_count: int
+    runnable_count: int
+    sample_records: list[AdminEmbeddingReadinessRecord] = Field(default_factory=list)
+    workflow_note: str
+
+
+class AdminEmbeddingRunRequest(BaseModel):
+    limit: int = 10
+    record_ids: list[str] = Field(default_factory=list)
+
+
+class AdminEmbeddingRunResponse(BaseModel):
+    run_attempted: bool
+    provider_ready: bool
+    api_key_configured: bool
+    active_source: str
+    source_label: str
+    database_ready: bool
+    foundation_stage: str
+    persisted_record_count: int
+    vector_row_count: int
+    ready_vector_count: int
+    pending_count: int
+    error_count: int
+    runnable_count: int
+    processed_count: int
+    success_count: int
+    skipped_count: int
+    sample_records: list[AdminEmbeddingReadinessRecord] = Field(default_factory=list)
+    workflow_note: str

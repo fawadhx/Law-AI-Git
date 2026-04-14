@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     legal_source_embedding_dimensions: int = 1536
     legal_source_embedding_model: str = "text-embedding-3-small"
     legal_source_vector_search_enabled: bool = False
+    legal_source_vector_query_top_k: int = 8
     redis_url: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

@@ -1,7 +1,17 @@
 
+import math
 import re
 
+from sqlalchemy import select
+
+from app.core.config import settings
+from app.db.models import LegalSourceEmbeddingORM, LegalSourceORM
+from app.db.session import get_session_factory
 from app.schemas.legal_source import LegalSourceRecord
+from app.services.legal_source_embedding_service import (
+    generate_text_embedding,
+    is_embedding_provider_ready,
+)
 from app.services.legal_source_store import (
     get_active_legal_source_records,
     get_legal_source_store_diagnostics,
@@ -9,8 +19,19 @@ from app.services.legal_source_store import (
 )
 
 
+def _is_vector_retrieval_active(diagnostics: dict[str, object]) -> bool:
+    return bool(
+        diagnostics.get("active_source") == "database"
+        and diagnostics.get("database_ready")
+        and diagnostics.get("vector_search_enabled")
+        and int(diagnostics.get("embedding_ready_records", 0) or 0) > 0
+        and is_embedding_provider_ready()
+    )
+
+
 def get_retrieval_source_status() -> dict[str, object]:
     diagnostics = get_legal_source_store_diagnostics()
+    vector_retrieval_active = _is_vector_retrieval_active(diagnostics)
     return {
         "active_source": diagnostics["active_source"],
         "source_label": diagnostics["source_label"],
@@ -29,7 +50,135 @@ def get_retrieval_source_status() -> dict[str, object]:
         "embedding_model": diagnostics["embedding_model"],
         "embedding_dimensions": diagnostics["embedding_dimensions"],
         "vector_search_enabled": diagnostics["vector_search_enabled"],
+        "vector_retrieval_active": vector_retrieval_active,
+        "vector_query_top_k": settings.legal_source_vector_query_top_k,
     }
+
+
+
+VECTOR_SIMILARITY_MINIMUM = 0.18
+
+
+def _can_run_vector_retrieval() -> bool:
+    status = get_retrieval_source_status()
+    return bool(status["vector_retrieval_active"])
+
+
+def _cosine_similarity(vector_a: list[float], vector_b: list[float]) -> float:
+    if not vector_a or not vector_b or len(vector_a) != len(vector_b):
+        return 0.0
+
+    dot_product = sum(left * right for left, right in zip(vector_a, vector_b))
+    norm_a = math.sqrt(sum(value * value for value in vector_a))
+    norm_b = math.sqrt(sum(value * value for value in vector_b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+
+    return dot_product / (norm_a * norm_b)
+
+
+def _vector_bonus_from_similarity(similarity: float) -> int:
+    if similarity >= 0.82:
+        return 14
+    if similarity >= 0.76:
+        return 12
+    if similarity >= 0.70:
+        return 10
+    if similarity >= 0.64:
+        return 8
+    if similarity >= 0.58:
+        return 6
+    if similarity >= 0.52:
+        return 4
+    if similarity >= 0.46:
+        return 3
+    return 2
+
+
+def _embedding_row_is_queryable(record: LegalSourceORM, embedding_row: LegalSourceEmbeddingORM) -> bool:
+    if record.embedding_status != "ready":
+        return False
+    if not isinstance(embedding_row.embedding, list) or not embedding_row.embedding:
+        return False
+    if embedding_row.source_fingerprint != (record.retrieval_fingerprint or ""):
+        return False
+    if embedding_row.model_name != settings.legal_source_embedding_model:
+        return False
+    if embedding_row.dimensions != len(embedding_row.embedding):
+        return False
+    if embedding_row.dimensions != settings.legal_source_embedding_dimensions:
+        return False
+    return True
+
+
+def _retrieve_vector_candidates(query: str) -> list[tuple[float, LegalSourceRecord]]:
+    if not _can_run_vector_retrieval():
+        return []
+
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return []
+
+    try:
+        query_embedding = generate_text_embedding(query)
+    except Exception:
+        return []
+
+    top_k = max(4, int(settings.legal_source_vector_query_top_k or 8))
+    vector_results: list[tuple[float, LegalSourceRecord]] = []
+
+    try:
+        with session_factory() as session:
+            rows = session.execute(
+                select(LegalSourceORM, LegalSourceEmbeddingORM).join(
+                    LegalSourceEmbeddingORM,
+                    LegalSourceEmbeddingORM.record_id == LegalSourceORM.record_id,
+                )
+            ).all()
+
+        for record_row, embedding_row in rows:
+            if not _embedding_row_is_queryable(record_row, embedding_row):
+                continue
+
+            similarity = _cosine_similarity(
+                query_embedding,
+                [float(value) for value in embedding_row.embedding],
+            )
+            if similarity < VECTOR_SIMILARITY_MINIMUM:
+                continue
+
+            vector_results.append((similarity, record_row.to_record()))
+    except Exception:
+        return []
+
+    vector_results.sort(key=lambda item: item[0], reverse=True)
+    return vector_results[:top_k]
+
+
+def _merge_keyword_and_vector_results(
+    query: str,
+    keyword_results: list[tuple[int, LegalSourceRecord]],
+) -> list[tuple[int, LegalSourceRecord]]:
+    merged: dict[str, tuple[int, LegalSourceRecord]] = {
+        record.id: (score, record) for score, record in keyword_results
+    }
+
+    for similarity, record in _retrieve_vector_candidates(query):
+        current_score = merged.get(record.id, (0, record))[0]
+        combined_score = current_score + _vector_bonus_from_similarity(similarity)
+
+        if current_score == 0 and similarity >= 0.58:
+            combined_score = max(combined_score, 9)
+
+        if record_matches_requested_section(query, record):
+            combined_score += 3
+
+        existing = merged.get(record.id)
+        if existing is None or combined_score > existing[0]:
+            merged[record.id] = (combined_score, record)
+
+    return list(merged.values())
+
 
 CONCEPT_SYNONYMS: dict[str, list[str]] = {
     "theft": [
@@ -1146,7 +1295,7 @@ def select_contextual_records(
 
 
 def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int, LegalSourceRecord]]:
-    all_results: list[tuple[int, LegalSourceRecord]] = []
+    keyword_results: list[tuple[int, LegalSourceRecord]] = []
     signals = build_query_signals(query)
     civil_only = signals["civil"] and not any(
         [
@@ -1169,8 +1318,9 @@ def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int,
     for record in get_active_legal_source_records():
         score = score_record(query, record)
         if score > 0:
-            all_results.append((score, record))
+            keyword_results.append((score, record))
 
+    all_results = _merge_keyword_and_vector_results(query, keyword_results)
     all_results.sort(key=lambda item: sort_key_for_record(item, query), reverse=True)
 
     if civil_only:

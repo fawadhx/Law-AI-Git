@@ -30,6 +30,10 @@ from app.schemas.admin import (
     AdminRetrievalReadinessRecord,
     AdminRetrievalRefreshRequest,
     AdminRetrievalRefreshResponse,
+    AdminEmbeddingReadinessRecord,
+    AdminEmbeddingReadinessResponse,
+    AdminEmbeddingRunRequest,
+    AdminEmbeddingRunResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_source_store import (
@@ -39,6 +43,10 @@ from app.services.legal_source_store import (
     get_persisted_retrieval_readiness_audit,
     refresh_persisted_retrieval_metadata,
     upsert_persisted_legal_source,
+)
+from app.services.legal_source_embedding_service import (
+    get_embedding_store_snapshot,
+    run_embedding_generation,
 )
 
 
@@ -457,6 +465,7 @@ def get_admin_summary() -> AdminSummaryResponse:
     retrieval_store = get_legal_source_store_status()
     diagnostics = get_legal_source_store_diagnostics()
     readiness_audit = get_persisted_retrieval_readiness_audit()
+    embedding_snapshot = get_embedding_store_snapshot()
     active_records = snapshot.records
     total_records = len(active_records)
     law_breakdown = _law_breakdown(active_records)
@@ -469,6 +478,7 @@ def get_admin_summary() -> AdminSummaryResponse:
     embedding_coverage_value = f"{diagnostics['embedding_coverage_percent']}%"
     retrieval_profile_value = diagnostics["retrieval_profile_label"]
     refresh_needed_value = str(readiness_audit['refresh_needed_count'])
+    stored_vectors_value = str(embedding_snapshot['vector_row_count'])
 
     return AdminSummaryResponse(
         stats=[
@@ -508,6 +518,11 @@ def get_admin_summary() -> AdminSummaryResponse:
                 value=refresh_needed_value,
                 title="Metadata refresh needed",
                 description="Persisted records whose normalized retrieval document or fingerprint should be resynchronized before later embedding work.",
+            ),
+            AdminStat(
+                value=stored_vectors_value,
+                title="Stored vectors",
+                description="Rows currently present in the new legal-source embedding store. These appear only after the embedding run executes with an API key configured.",
             ),
             AdminStat(
                 value=snapshot.source_label,
@@ -1036,6 +1051,10 @@ from app.schemas.admin import (
     AdminRetrievalReadinessRecord,
     AdminRetrievalRefreshRequest,
     AdminRetrievalRefreshResponse,
+    AdminEmbeddingReadinessRecord,
+    AdminEmbeddingReadinessResponse,
+    AdminEmbeddingRunRequest,
+    AdminEmbeddingRunResponse,
 )
 
 WORKSPACE_DRAFT_STORE: dict[str, dict] = {}
@@ -1303,6 +1322,54 @@ def refresh_admin_retrieval_metadata(payload: AdminRetrievalRefreshRequest) -> A
             "This refresh action resynchronizes normalized retrieval documents and fingerprints for persisted records. "
             "When a fingerprint changes, the record is marked pending again so later embedding-generation steps know it needs a fresh vector."
         ),
+    )
+
+
+def get_admin_embedding_readiness() -> AdminEmbeddingReadinessResponse:
+    snapshot = _active_store_snapshot()
+    embedding_snapshot = get_embedding_store_snapshot()
+
+    return AdminEmbeddingReadinessResponse(
+        provider_ready=embedding_snapshot["provider_ready"],
+        api_key_configured=embedding_snapshot["api_key_configured"],
+        active_source=snapshot.active_source,
+        source_label=snapshot.source_label,
+        database_ready=snapshot.database_ready,
+        foundation_stage=snapshot.foundation_stage,
+        persisted_record_count=embedding_snapshot["persisted_record_count"],
+        vector_row_count=embedding_snapshot["vector_row_count"],
+        ready_vector_count=embedding_snapshot["ready_vector_count"],
+        pending_count=embedding_snapshot["pending_count"],
+        error_count=embedding_snapshot["error_count"],
+        runnable_count=embedding_snapshot["runnable_count"],
+        sample_records=[AdminEmbeddingReadinessRecord(**item) for item in embedding_snapshot["sample_records"]],
+        workflow_note=embedding_snapshot["workflow_note"],
+    )
+
+
+def run_admin_embedding_refresh(payload: AdminEmbeddingRunRequest) -> AdminEmbeddingRunResponse:
+    snapshot = _active_store_snapshot()
+    run_result = run_embedding_generation(limit=payload.limit, record_ids=payload.record_ids)
+
+    return AdminEmbeddingRunResponse(
+        run_attempted=run_result["run_attempted"],
+        provider_ready=run_result["provider_ready"],
+        api_key_configured=run_result["api_key_configured"],
+        active_source=snapshot.active_source,
+        source_label=snapshot.source_label,
+        database_ready=snapshot.database_ready,
+        foundation_stage=snapshot.foundation_stage,
+        persisted_record_count=run_result["persisted_record_count"],
+        vector_row_count=run_result["vector_row_count"],
+        ready_vector_count=run_result["ready_vector_count"],
+        pending_count=run_result["pending_count"],
+        error_count=run_result["error_count"],
+        runnable_count=run_result["runnable_count"],
+        processed_count=run_result["processed_count"],
+        success_count=run_result["success_count"],
+        skipped_count=run_result["skipped_count"],
+        sample_records=[AdminEmbeddingReadinessRecord(**item) for item in run_result["sample_records"]],
+        workflow_note=run_result["workflow_note"],
     )
 
 

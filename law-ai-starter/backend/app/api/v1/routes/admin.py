@@ -4,6 +4,9 @@ from app.schemas.admin import (
     AdminPublishExecutionResponse,
     AdminPublishQueueRecord,
     AdminRetrievalReadinessResponse,
+    AdminEmbeddingReadinessResponse,
+    AdminEmbeddingRunRequest,
+    AdminEmbeddingRunResponse,
     AdminRetrievalRefreshRequest,
     AdminRetrievalRefreshResponse,
     AdminSourceCatalogResponse,
@@ -29,7 +32,9 @@ from app.services.admin_service import (
     get_admin_source_detail,
     get_admin_summary,
     get_admin_retrieval_readiness,
+    get_admin_embedding_readiness,
     refresh_admin_retrieval_metadata,
+    run_admin_embedding_refresh,
     get_admin_workspace,
     get_admin_workspace_draft,
     publish_admin_workspace_package,
@@ -84,6 +89,16 @@ def admin_retrieval_readiness() -> AdminRetrievalReadinessResponse:
 @router.post("/admin/retrieval-readiness/refresh", response_model=AdminRetrievalRefreshResponse)
 def admin_retrieval_refresh(payload: AdminRetrievalRefreshRequest) -> AdminRetrievalRefreshResponse:
     return refresh_admin_retrieval_metadata(payload)
+
+
+@router.get("/admin/embedding-readiness", response_model=AdminEmbeddingReadinessResponse)
+def admin_embedding_readiness() -> AdminEmbeddingReadinessResponse:
+    return get_admin_embedding_readiness()
+
+
+@router.post("/admin/embedding-readiness/run", response_model=AdminEmbeddingRunResponse)
+def admin_embedding_refresh(payload: AdminEmbeddingRunRequest) -> AdminEmbeddingRunResponse:
+    return run_admin_embedding_refresh(payload)
 
 
 @router.get("/admin/workspace", response_model=AdminWorkspaceResponse)

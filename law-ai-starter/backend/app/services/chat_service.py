@@ -36,10 +36,15 @@ def build_source_store_scope_note(question: str, category_key: str, confidence_l
     lower = question.strip().lower()
     exact_lookup_terms = ["section", "ppc", "peca", "crpc", "fir", "register fir", "24 hours", "without warrant"]
     is_exact_lookup = any(term in lower for term in exact_lookup_terms)
+    retrieval_label = (
+        "the persisted legal-source catalog with vector-assisted reranking"
+        if status.get("vector_retrieval_active")
+        else "the persisted legal-source catalog"
+    )
 
     if confidence_level == "high" and (is_exact_lookup or category_key in {"fir_reporting", "arrest_detention", "officer_authority"}):
         return (
-            "Active-source note: this response was matched from the persisted legal-source catalog that currently backs Phase 5 retrieval. "
+            f"Active-source note: this response was matched from {retrieval_label} that currently backs Phase 5 retrieval. "
             "The legal-information-only boundary still applies."
         )
 
