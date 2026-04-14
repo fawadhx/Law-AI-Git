@@ -1435,6 +1435,41 @@ export default function AdminPage() {
     );
   }
 
+  async function saveCreateDraftToWorkspace() {
+    try {
+      setWorkspaceBusy(true);
+      setWorkspaceActionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          label: createForm.citation_label || createForm.section_title || "New source draft",
+          draft: draftFormToPayload(createForm),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Workspace draft save failed with status ${response.status}`);
+      }
+
+      const result: AdminWorkspaceDraftDetailResponse = await response.json();
+      setCreateForm(payloadToDraftForm(result.payload));
+      setCreateResult(null);
+      setCreateError("");
+      setCreateTemplateNote("Saved the current create draft to the workspace shelf for later review or publishing.");
+      await loadWorkspace();
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceActionError(err.message || "Failed to save create draft to workspace.");
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
   async function runIngestionPreview() {
     if (!ingestionRawText.trim()) {
       setIngestionError("Paste legal source text first, then run ingestion preview.");
