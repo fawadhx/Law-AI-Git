@@ -1611,6 +1611,28 @@ def run_admin_embedding_refresh(payload: AdminEmbeddingRunRequest) -> AdminEmbed
     snapshot = _active_store_snapshot()
     run_result = run_embedding_generation(limit=payload.limit, record_ids=payload.record_ids)
 
+    selected_count = len(payload.record_ids or [])
+    selected_label = (
+        f"{selected_count} selected record{'s' if selected_count != 1 else ''}"
+        if selected_count > 0
+        else f"up to {payload.limit} pending record{'s' if payload.limit != 1 else ''}"
+    )
+
+    first_sample = run_result["sample_records"][0] if run_result["sample_records"] else {}
+    _log_activity(
+        kind="embedding_run",
+        title="Ran embedding refresh",
+        detail=(
+            f"Embedding refresh targeted {selected_label}. "
+            f"Processed {run_result['processed_count']} record(s), succeeded on {run_result['success_count']}, "
+            f"and skipped {run_result['skipped_count']}. "
+            f"Provider ready: {'yes' if run_result['provider_ready'] else 'no'}."
+        ),
+        status="completed" if run_result["run_attempted"] else "blocked",
+        citation_label=str(first_sample.get("citation_label") or "") or None,
+        record_id=(payload.record_ids or [None])[0],
+    )
+
     return AdminEmbeddingRunResponse(
         run_attempted=run_result["run_attempted"],
         provider_ready=run_result["provider_ready"],
