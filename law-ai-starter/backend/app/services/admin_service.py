@@ -37,9 +37,12 @@ from app.schemas.admin import (
     AdminRetrievalProbeRequest,
     AdminRetrievalProbeRecord,
     AdminRetrievalProbeResponse,
+    AdminSourceCreateResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_source_store import (
+    build_retrieval_document,
+    build_retrieval_fingerprint_for_document,
     get_legal_source_store_diagnostics,
     get_legal_source_store_snapshot,
     get_legal_source_store_status,
@@ -725,6 +728,81 @@ def validate_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDr
     )
 
 
+def create_admin_source_record(payload: AdminSourceDraftInput) -> AdminSourceCreateResponse:
+    normalized = _normalize_draft(payload)
+    validation = validate_admin_source_draft(normalized)
+
+    if validation.error_count > 0:
+        return AdminSourceCreateResponse(
+            create_status="blocked",
+            save_mode="none",
+            record_id=None,
+            citation_label=normalized.citation_label,
+            persisted_sync_applied=False,
+            item=None,
+            validation=validation,
+            workflow_note=(
+                "This create request was blocked because the draft still has validation errors. "
+                "Fix the required fields first, then save again."
+            ),
+        )
+
+    target_record_id = normalized.id or _build_record_id(normalized)
+    existing_record = _record_index(_active_records()).get(target_record_id)
+    if existing_record is not None:
+        return AdminSourceCreateResponse(
+            create_status="blocked",
+            save_mode="none",
+            record_id=target_record_id,
+            citation_label=normalized.citation_label,
+            persisted_sync_applied=False,
+            item=_build_source_record(existing_record),
+            validation=validation,
+            workflow_note=(
+                "This create request was blocked because a record with the same id already exists in the active catalog. "
+                "Use a different id or move to the edit flow in the next phase."
+            ),
+        )
+
+    record = _draft_to_live_record(normalized, record_id=target_record_id)
+    retrieval_document = build_retrieval_document(record)
+    retrieval_fingerprint = build_retrieval_fingerprint_for_document(retrieval_document)
+    record = record.model_copy(
+        update={
+            "retrieval_document": retrieval_document,
+            "retrieval_fingerprint": retrieval_fingerprint,
+            "embedding_status": "pending",
+            "embedding_model": None,
+            "embedding_dimensions": None,
+            "embedding_updated_at": None,
+        }
+    )
+
+    persisted_sync_applied = upsert_persisted_legal_source(record)
+    save_mode = "database" if persisted_sync_applied else "in_memory"
+    saved_record = record
+
+    if not persisted_sync_applied:
+        saved_record = _upsert_live_record(normalized, target_record_id=target_record_id)
+    else:
+        refresh_persisted_retrieval_metadata(force_all=False)
+
+    return AdminSourceCreateResponse(
+        create_status="created",
+        save_mode=save_mode,
+        record_id=saved_record.id,
+        citation_label=saved_record.citation_label,
+        persisted_sync_applied=persisted_sync_applied,
+        item=_build_source_record(saved_record),
+        validation=validation,
+        workflow_note=(
+            "This is the first real admin create step for Phase 6. "
+            "When the database is ready, the new legal source record is now persisted with retrieval metadata and marked pending for future embedding generation. "
+            "If database persistence is unavailable, the save falls back safely to the in-memory prototype catalog."
+        ),
+    )
+
+
 FIELD_LABELS = {
     "source_title": "Source title",
     "law_name": "Law name",
@@ -1062,6 +1140,7 @@ from app.schemas.admin import (
     AdminRetrievalProbeRequest,
     AdminRetrievalProbeRecord,
     AdminRetrievalProbeResponse,
+    AdminSourceCreateResponse,
 )
 
 WORKSPACE_DRAFT_STORE: dict[str, dict] = {}
