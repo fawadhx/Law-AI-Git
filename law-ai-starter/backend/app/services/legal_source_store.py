@@ -490,3 +490,21 @@ def upsert_persisted_legal_source(record: LegalSourceRecord) -> bool:
         return True
     except SQLAlchemyError:  # pragma: no cover - depends on environment
         return False
+
+
+def delete_persisted_legal_source(record_id: str) -> bool:
+    foundation = get_database_foundation_snapshot()
+    session_factory = get_session_factory()
+    if not foundation.get("ready") or session_factory is None:
+        return False
+
+    try:
+        with session_factory() as session:
+            record = session.get(LegalSourceORM, record_id)
+            if record is None:
+                return False
+            session.delete(record)
+            session.commit()
+        return True
+    except SQLAlchemyError:  # pragma: no cover - depends on environment
+        return False

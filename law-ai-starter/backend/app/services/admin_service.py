@@ -38,12 +38,14 @@ from app.schemas.admin import (
     AdminRetrievalProbeRecord,
     AdminRetrievalProbeResponse,
     AdminSourceCreateResponse,
+    AdminSourceDeleteResponse,
     AdminSourceUpdateResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_source_store import (
     build_retrieval_document,
     build_retrieval_fingerprint_for_document,
+    delete_persisted_legal_source,
     get_legal_source_store_diagnostics,
     get_legal_source_store_snapshot,
     get_legal_source_store_status,
@@ -884,6 +886,55 @@ def update_admin_source_record(record_id: str, payload: AdminSourceDraftInput) -
     )
 
 
+def delete_admin_source_record(record_id: str) -> AdminSourceDeleteResponse:
+    existing_record = _record_index(_active_records()).get(record_id)
+    if existing_record is None:
+        return AdminSourceDeleteResponse(
+            delete_status="blocked",
+            save_mode="none",
+            record_id=record_id,
+            citation_label="",
+            persisted_sync_applied=False,
+            deleted_title="",
+            workflow_note=(
+                "This delete request was blocked because the target record was not found in the active catalog."
+            ),
+        )
+
+    persisted_sync_applied = delete_persisted_legal_source(record_id)
+    save_mode = "database" if persisted_sync_applied else "in_memory"
+
+    if not persisted_sync_applied:
+        deleted = _delete_live_record(record_id)
+        if not deleted:
+            return AdminSourceDeleteResponse(
+                delete_status="blocked",
+                save_mode="none",
+                record_id=record_id,
+                citation_label=existing_record.citation_label,
+                persisted_sync_applied=False,
+                deleted_title=existing_record.section_title,
+                workflow_note=(
+                    "This delete request could not be applied because the record was not removable from the fallback in-memory catalog."
+                ),
+            )
+    else:
+        refresh_persisted_retrieval_metadata(force_all=False)
+
+    return AdminSourceDeleteResponse(
+        delete_status="deleted",
+        save_mode=save_mode,
+        record_id=record_id,
+        citation_label=existing_record.citation_label,
+        persisted_sync_applied=persisted_sync_applied,
+        deleted_title=existing_record.section_title,
+        workflow_note=(
+            "This is the first real delete step for Phase 6. "
+            "The selected legal source record is removed from the active store, and retrieval readiness can now be recalculated against the remaining catalog."
+        ),
+    )
+
+
 FIELD_LABELS = {
     "source_title": "Source title",
     "law_name": "Law name",
@@ -1222,6 +1273,7 @@ from app.schemas.admin import (
     AdminRetrievalProbeRecord,
     AdminRetrievalProbeResponse,
     AdminSourceCreateResponse,
+    AdminSourceDeleteResponse,
     AdminSourceUpdateResponse,
 )
 

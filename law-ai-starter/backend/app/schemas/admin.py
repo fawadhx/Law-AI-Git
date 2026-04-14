@@ -460,3 +460,13 @@ class AdminSourceUpdateResponse(BaseModel):
     item: AdminSourceRecord | None = None
     validation: AdminSourceDraftValidationResponse
     workflow_note: str
+
+
+class AdminSourceDeleteResponse(BaseModel):
+    delete_status: str
+    save_mode: str
+    record_id: str | None = None
+    citation_label: str = ""
+    persisted_sync_applied: bool = False
+    deleted_title: str = ""
+    workflow_note: str
