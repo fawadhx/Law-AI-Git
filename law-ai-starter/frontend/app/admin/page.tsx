@@ -673,6 +673,10 @@ export default function AdminPage() {
   const [ingestionLoading, setIngestionLoading] = useState(false);
   const [ingestionError, setIngestionError] = useState("");
   const [ingestionPreview, setIngestionPreview] = useState<AdminIngestionPreviewResponse | null>(null);
+  const [ingestionBatchLoading, setIngestionBatchLoading] = useState(false);
+  const [ingestionBatchError, setIngestionBatchError] = useState("");
+  const [ingestionBatchMaxCandidates, setIngestionBatchMaxCandidates] = useState("5");
+  const [ingestionBatchPreview, setIngestionBatchPreview] = useState<AdminIngestionBatchPreviewResponse | null>(null);
   const [persistUpdateLoading, setPersistUpdateLoading] = useState(false);
   const [persistUpdateError, setPersistUpdateError] = useState("");
   const [persistUpdateResult, setPersistUpdateResult] = useState<AdminSourceUpdateResponse | null>(null);
@@ -1461,6 +1465,7 @@ export default function AdminPage() {
 
       const result: AdminIngestionPreviewResponse = await response.json();
       setIngestionPreview(result);
+      setIngestionBatchError("");
       setCreateForm(result.draft);
       setCreateResult(null);
       setCreateError("");
@@ -1473,6 +1478,58 @@ export default function AdminPage() {
       }
     } finally {
       setIngestionLoading(false);
+    }
+  }
+
+  function loadIngestionCandidateIntoCreateForm(item: AdminIngestionPreviewResponse) {
+    setCreateForm(item.draft);
+    setCreateResult(null);
+    setCreateError("");
+    setCreateTemplateNote(
+      "Loaded an ingestion candidate into the create form. Review extracted fields and duplicate warnings before saving."
+    );
+  }
+
+  async function runBatchIngestionPreview() {
+    if (!ingestionRawText.trim()) {
+      setIngestionBatchError("Paste legal source text first, then run batch preview.");
+      return;
+    }
+
+    try {
+      setIngestionBatchLoading(true);
+      setIngestionBatchError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/ingestion/batch-preview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source_title: ingestionSourceTitle,
+          law_name: ingestionLawName,
+          jurisdiction: ingestionJurisdiction,
+          citation_hint: ingestionCitationHint,
+          raw_text: ingestionRawText,
+          max_candidates: Math.max(1, Number.parseInt(ingestionBatchMaxCandidates || "5", 10) || 5),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Batch ingestion preview failed with status ${response.status}`);
+      }
+
+      const result: AdminIngestionBatchPreviewResponse = await response.json();
+      setIngestionBatchPreview(result);
+      if (result.items.length > 0) {
+        loadIngestionCandidateIntoCreateForm(result.items[0]);
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        setIngestionBatchError(err.message || "Failed to build batch ingestion preview.");
+      }
+    } finally {
+      setIngestionBatchLoading(false);
     }
   }
 
@@ -2034,15 +2091,66 @@ export default function AdminPage() {
                   />
                 </div>
 
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                   <button type="button" onClick={runIngestionPreview} style={secondaryButton} disabled={ingestionLoading}>
                     {ingestionLoading ? "Previewing..." : "Preview ingestion"}
                   </button>
+                  <button type="button" onClick={runBatchIngestionPreview} style={secondaryButton} disabled={ingestionBatchLoading}>
+                    {ingestionBatchLoading ? "Splitting..." : "Preview batch"}
+                  </button>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <div style={{ color: "#a9c1ff", fontSize: "13px" }}>Max candidates</div>
+                    <input
+                      value={ingestionBatchMaxCandidates}
+                      onChange={(event) => setIngestionBatchMaxCandidates(event.target.value)}
+                      style={{ ...fieldStyle, width: "90px" }}
+                      placeholder="5"
+                    />
+                  </div>
                 </div>
 
                 {ingestionError && (
                   <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
                     {ingestionError}
+                  </div>
+                )}
+
+                {ingestionBatchError && (
+                  <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                    {ingestionBatchError}
+                  </div>
+                )}
+
+                {ingestionBatchPreview && (
+                  <div style={{ ...softCardStyle, display: "grid", gap: "12px" }}>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                      <div style={badge("green")}>Batch preview</div>
+                      <div style={{ color: "#dbe4ff" }}>{ingestionBatchPreview.workflow_note}</div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <div style={chipStyle}>Items {ingestionBatchPreview.item_count}</div>
+                    </div>
+
+                    <div style={{ display: "grid", gap: "10px" }}>
+                      {ingestionBatchPreview.items.map((item, index) => (
+                        <div key={`${item.draft.section_number}-${index}`} style={{ ...glassCardStyle, display: "grid", gap: "8px" }}>
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                            <div style={chipStyle}>Candidate {index + 1}</div>
+                            <div style={chipStyle}>Section {item.extracted_section_number || "—"}</div>
+                            <div style={chipStyle}>Readiness {item.validation.readiness_score}</div>
+                            <div style={chipStyle}>Duplicates {item.duplicate_candidates.length}</div>
+                          </div>
+                          <div style={{ color: "#ffffff", fontWeight: 600 }}>{item.extracted_section_title || item.draft.section_title || "Untitled section"}</div>
+                          <div style={{ color: "#dbe4ff" }}>{item.draft.citation_label || item.draft.law_name}</div>
+                          <div>
+                            <button type="button" onClick={() => loadIngestionCandidateIntoCreateForm(item)} style={secondaryButton}>
+                              Load candidate into create form
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
