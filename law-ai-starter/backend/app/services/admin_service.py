@@ -777,6 +777,65 @@ def _extract_keywords_from_text(raw_text: str, limit: int = 8) -> str:
 
 
 
+
+
+def _infer_provision_kind_from_text(raw_text: str) -> str:
+    compact = (raw_text or "").lower()
+    if "shall be punished" in compact or "punished with" in compact or "imprisonment" in compact:
+        return "punishment"
+    if "whoever" in compact or "commits" in compact or "offence" in compact:
+        return "general"
+    if "complaint" in compact or "investigation" in compact or "procedure" in compact or "court" in compact:
+        return "procedure"
+    return "general"
+
+
+def _extract_related_sections_from_text(raw_text: str, current_section_number: str) -> str:
+    matches = re.findall(r"(?i)\b(?:section|article|s\.)\s*([0-9A-Za-z\-()/.]+)", raw_text or "")
+    cleaned: list[str] = []
+    current = (current_section_number or "").strip().lower()
+    for match in matches:
+        value = _compact_text(match)
+        if not value:
+            continue
+        if value.strip().lower() == current:
+            continue
+        if value not in cleaned:
+            cleaned.append(value)
+    return ", ".join(cleaned[:10])
+
+
+def _infer_offence_group_from_text(raw_text: str) -> str:
+    compact = (raw_text or "").lower()
+    mapping = [
+        ("Threats and intimidation", ["intimidation", "threat", "alarm"]),
+        ("Assault and hurt", ["assault", "hurt", "injury", "violence"]),
+        ("Theft and property", ["theft", "stolen", "dishonest", "property"]),
+        ("Fraud and cheating", ["fraud", "cheating", "deceive", "forgery"]),
+        ("Harassment and modesty", ["harassment", "modesty", "outrage", "insult"]),
+        ("Procedure and complaint", ["complaint", "court", "procedure", "investigation"]),
+        ("Cyber and digital misuse", ["electronic", "computer", "digital", "cyber"]),
+    ]
+    for label, keywords in mapping:
+        if any(keyword in compact for keyword in keywords):
+            return label
+    return ""
+
+
+def _extract_punishment_summary_from_text(raw_text: str) -> str:
+    compact = _compact_text(raw_text)
+    patterns = [
+        r"(?i)(shall be punished[^.]{0,220}[.])",
+        r"(?i)(punished with[^.]{0,220}[.])",
+        r"(?i)(liable to[^.]{0,220}[.])",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, compact)
+        if match:
+            return _compact_text(match.group(1))[:240]
+    return ""
+
+
 def _find_ingestion_duplicate_candidates(draft: AdminSourceDraftInput, limit: int = 5) -> list[AdminIngestionDuplicateCandidate]:
     draft_law_name = (draft.law_name or "").strip().lower()
     draft_section_number = (draft.section_number or "").strip().lower()
@@ -885,13 +944,13 @@ def preview_admin_ingestion(payload: AdminIngestionPreviewRequest) -> AdminInges
         excerpt=raw_text[:5000],
         citation_label=citation_label,
         jurisdiction=payload.jurisdiction.strip() or "Pakistan",
-        provision_kind="general",
-        offence_group="",
-        punishment_summary="",
+        provision_kind=_infer_provision_kind_from_text(raw_text),
+        offence_group=_infer_offence_group_from_text(raw_text),
+        punishment_summary=_extract_punishment_summary_from_text(raw_text),
         tags_text="",
         aliases_text="",
         keywords_text=_extract_keywords_from_text(raw_text),
-        related_sections_text="",
+        related_sections_text=_extract_related_sections_from_text(raw_text, extracted_section_number),
     )
     normalized = _normalize_draft(preview_draft)
     validation = validate_admin_source_draft(normalized)
@@ -908,7 +967,7 @@ def preview_admin_ingestion(payload: AdminIngestionPreviewRequest) -> AdminInges
         workflow_note=(
             "This starts Phase 7: source ingestion workflow. "
             "The backend now converts pasted legal text into a draft-ready admin record preview using simple extraction heuristics. "
-            "It also checks the active catalog for likely duplicates before you save anything."
+            "It also checks the active catalog for likely duplicates before you save anything, and now fills additional classification-style fields such as provision kind, offence group, punishment hints, and related sections."
         ),
     )
 
