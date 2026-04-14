@@ -775,6 +775,52 @@ def _extract_keywords_from_text(raw_text: str, limit: int = 8) -> str:
     return ", ".join([word for word, _ in ranked[:limit]])
 
 
+
+
+def _find_ingestion_duplicate_candidates(draft: AdminSourceDraftInput, limit: int = 5) -> list[AdminIngestionDuplicateCandidate]:
+    draft_law_name = (draft.law_name or "").strip().lower()
+    draft_section_number = (draft.section_number or "").strip().lower()
+    draft_citation = (draft.citation_label or "").strip().lower()
+    draft_section_title = (draft.section_title or "").strip().lower()
+
+    candidates: list[AdminIngestionDuplicateCandidate] = []
+
+    for record in _active_records():
+        reasons: list[str] = []
+        if draft_citation and record.citation_label.strip().lower() == draft_citation:
+            reasons.append("citation label match")
+        if (
+            draft_law_name
+            and draft_section_number
+            and record.law_name.strip().lower() == draft_law_name
+            and record.section_number.strip().lower() == draft_section_number
+        ):
+            reasons.append("law name + section number match")
+        if (
+            draft_section_title
+            and record.section_title.strip().lower() == draft_section_title
+            and draft_law_name
+            and record.law_name.strip().lower() == draft_law_name
+        ):
+            reasons.append("law name + section title match")
+
+        if reasons:
+            candidates.append(
+                AdminIngestionDuplicateCandidate(
+                    record_id=record.id,
+                    citation_label=record.citation_label,
+                    section_title=record.section_title,
+                    law_name=record.law_name,
+                    match_reason=", ".join(reasons),
+                )
+            )
+
+        if len(candidates) >= limit:
+            break
+
+    return candidates
+
+
 def preview_admin_ingestion(payload: AdminIngestionPreviewRequest) -> AdminIngestionPreviewResponse:
     raw_text = (payload.raw_text or "").strip()
     lines = _first_nonempty_lines(raw_text, limit=6)
@@ -807,16 +853,19 @@ def preview_admin_ingestion(payload: AdminIngestionPreviewRequest) -> AdminInges
     normalized = _normalize_draft(preview_draft)
     validation = validate_admin_source_draft(normalized)
 
+    duplicate_candidates = _find_ingestion_duplicate_candidates(normalized)
+
     return AdminIngestionPreviewResponse(
         draft=normalized,
         validation=validation,
         extracted_title=extracted_title,
         extracted_section_number=extracted_section_number,
         extracted_section_title=extracted_section_title,
+        duplicate_candidates=duplicate_candidates,
         workflow_note=(
             "This starts Phase 7: source ingestion workflow. "
             "The backend now converts pasted legal text into a draft-ready admin record preview using simple extraction heuristics. "
-            "No data is saved yet; this is only a parsing and validation preview."
+            "It also checks the active catalog for likely duplicates before you save anything."
         ),
     )
 

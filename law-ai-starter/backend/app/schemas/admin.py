@@ -480,10 +480,19 @@ class AdminIngestionPreviewRequest(BaseModel):
     citation_hint: str = ""
 
 
+class AdminIngestionDuplicateCandidate(BaseModel):
+    record_id: str
+    citation_label: str
+    section_title: str
+    law_name: str
+    match_reason: str
+
+
 class AdminIngestionPreviewResponse(BaseModel):
     draft: AdminSourceDraftInput
     validation: AdminSourceDraftValidationResponse
     extracted_title: str = ""
     extracted_section_number: str = ""
     extracted_section_title: str = ""
+    duplicate_candidates: list[AdminIngestionDuplicateCandidate] = Field(default_factory=list)
     workflow_note: str
