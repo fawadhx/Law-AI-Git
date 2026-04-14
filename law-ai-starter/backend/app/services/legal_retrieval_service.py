@@ -64,6 +64,15 @@ def _can_run_vector_retrieval() -> bool:
     return bool(status["vector_retrieval_active"])
 
 
+def _build_keyword_results(query: str) -> list[tuple[int, LegalSourceRecord]]:
+    keyword_results: list[tuple[int, LegalSourceRecord]] = []
+    for record in get_active_legal_source_records():
+        score = score_record(query, record)
+        if score > 0:
+            keyword_results.append((score, record))
+    return keyword_results
+
+
 def _cosine_similarity(vector_a: list[float], vector_b: list[float]) -> float:
     if not vector_a or not vector_b or len(vector_a) != len(vector_b):
         return 0.0
@@ -111,7 +120,7 @@ def _embedding_row_is_queryable(record: LegalSourceORM, embedding_row: LegalSour
     return True
 
 
-def _retrieve_vector_candidates(query: str) -> list[tuple[float, LegalSourceRecord]]:
+def _retrieve_vector_candidate_payloads(query: str) -> list[dict[str, object]]:
     if not _can_run_vector_retrieval():
         return []
 
@@ -125,7 +134,7 @@ def _retrieve_vector_candidates(query: str) -> list[tuple[float, LegalSourceReco
         return []
 
     top_k = max(4, int(settings.legal_source_vector_query_top_k or 8))
-    vector_results: list[tuple[float, LegalSourceRecord]] = []
+    vector_results: list[dict[str, object]] = []
 
     try:
         with session_factory() as session:
@@ -147,12 +156,27 @@ def _retrieve_vector_candidates(query: str) -> list[tuple[float, LegalSourceReco
             if similarity < VECTOR_SIMILARITY_MINIMUM:
                 continue
 
-            vector_results.append((similarity, record_row.to_record()))
+            vector_results.append(
+                {
+                    "similarity": similarity,
+                    "record": record_row.to_record(),
+                    "embedding_status": record_row.embedding_status,
+                    "model_name": embedding_row.model_name,
+                    "dimensions": embedding_row.dimensions,
+                }
+            )
     except Exception:
         return []
 
-    vector_results.sort(key=lambda item: item[0], reverse=True)
+    vector_results.sort(key=lambda item: float(item["similarity"]), reverse=True)
     return vector_results[:top_k]
+
+
+def _retrieve_vector_candidates(query: str) -> list[tuple[float, LegalSourceRecord]]:
+    return [
+        (float(item["similarity"]), item["record"])
+        for item in _retrieve_vector_candidate_payloads(query)
+    ]
 
 
 def _merge_keyword_and_vector_results(
@@ -1295,7 +1319,7 @@ def select_contextual_records(
 
 
 def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int, LegalSourceRecord]]:
-    keyword_results: list[tuple[int, LegalSourceRecord]] = []
+    keyword_results = _build_keyword_results(query)
     signals = build_query_signals(query)
     civil_only = signals["civil"] and not any(
         [
@@ -1315,11 +1339,6 @@ def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int,
         [signals["police"], signals["section_lookup"], signals["threat"], signals["online"], signals["fraud"]]
     )
 
-    for record in get_active_legal_source_records():
-        score = score_record(query, record)
-        if score > 0:
-            keyword_results.append((score, record))
-
     all_results = _merge_keyword_and_vector_results(query, keyword_results)
     all_results.sort(key=lambda item: sort_key_for_record(item, query), reverse=True)
 
@@ -1332,6 +1351,87 @@ def retrieve_scored_legal_sources(query: str, limit: int = 4) -> list[tuple[int,
             return []
 
     return select_contextual_records(query, all_results, limit)
+
+
+def get_retrieval_probe(query: str, limit: int = 6) -> dict[str, object]:
+    keyword_results = _build_keyword_results(query)
+    keyword_score_map = {record.id: score for score, record in keyword_results}
+    vector_payloads = _retrieve_vector_candidate_payloads(query)
+    merged_results = _merge_keyword_and_vector_results(query, keyword_results)
+    merged_results.sort(key=lambda item: sort_key_for_record(item, query), reverse=True)
+    selected_results = select_contextual_records(query, merged_results, limit)
+
+    selected_ids = {record.id for _, record in selected_results}
+    merged_map = {record.id: score for score, record in merged_results}
+    vector_lookup: dict[str, dict[str, object]] = {
+        item["record"].id: item for item in vector_payloads
+    }
+
+    candidate_ids: list[str] = []
+    for _, record in merged_results:
+        if record.id not in candidate_ids:
+            candidate_ids.append(record.id)
+    for item in vector_payloads:
+        record = item["record"]
+        if record.id not in candidate_ids:
+            candidate_ids.append(record.id)
+
+    candidate_rows: list[dict[str, object]] = []
+    for record_id in candidate_ids[: max(limit * 2, 8)]:
+        merged_record = next(
+            (candidate_record for _, candidate_record in merged_results if candidate_record.id == record_id),
+            None,
+        )
+        if merged_record is not None:
+            record = merged_record
+        else:
+            vector_item = vector_lookup.get(record_id)
+            if vector_item is None:
+                continue
+            record = vector_item["record"]
+
+        keyword_score = int(keyword_score_map.get(record.id, 0))
+        vector_item = vector_lookup.get(record.id)
+        vector_similarity = float(vector_item["similarity"]) if vector_item else None
+        vector_bonus = (
+            _vector_bonus_from_similarity(vector_similarity)
+            if vector_similarity is not None
+            else 0
+        )
+
+        candidate_rows.append(
+            {
+                "record_id": record.id,
+                "citation_label": record.citation,
+                "law_name": record.law_name,
+                "section_number": record.section_number,
+                "category": record.category,
+                "keyword_score": keyword_score,
+                "vector_similarity": vector_similarity,
+                "vector_bonus": vector_bonus,
+                "final_score": int(merged_map.get(record.id, keyword_score)),
+                "selected": record.id in selected_ids,
+                "exact_section_match": record_matches_requested_section(query, record),
+                "excerpt": record.excerpt,
+            }
+        )
+
+    status = get_retrieval_source_status()
+    return {
+        "query": query,
+        "active_source": status["active_source"],
+        "source_label": status["source_label"],
+        "vector_retrieval_active": status["vector_retrieval_active"],
+        "vector_query_top_k": status["vector_query_top_k"],
+        "keyword_candidate_count": len(keyword_results),
+        "vector_candidate_count": len(vector_payloads),
+        "selected_count": len(selected_results),
+        "records": candidate_rows,
+        "workflow_note": (
+            "This probe shows how keyword scoring and vector similarity currently combine inside Phase 5 retrieval. "
+            "Vector similarity is only present when the database source is active, embeddings are ready, and vector search is enabled."
+        ),
+    }
 
 
 def retrieve_legal_sources(query: str, limit: int = 4) -> list[LegalSourceRecord]:

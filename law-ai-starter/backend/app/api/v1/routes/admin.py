@@ -4,6 +4,8 @@ from app.schemas.admin import (
     AdminPublishExecutionResponse,
     AdminPublishQueueRecord,
     AdminRetrievalReadinessResponse,
+    AdminRetrievalProbeRequest,
+    AdminRetrievalProbeResponse,
     AdminEmbeddingReadinessResponse,
     AdminEmbeddingRunRequest,
     AdminEmbeddingRunResponse,
@@ -32,6 +34,7 @@ from app.services.admin_service import (
     get_admin_source_detail,
     get_admin_summary,
     get_admin_retrieval_readiness,
+    run_admin_retrieval_probe,
     get_admin_embedding_readiness,
     refresh_admin_retrieval_metadata,
     run_admin_embedding_refresh,
@@ -89,6 +92,11 @@ def admin_retrieval_readiness() -> AdminRetrievalReadinessResponse:
 @router.post("/admin/retrieval-readiness/refresh", response_model=AdminRetrievalRefreshResponse)
 def admin_retrieval_refresh(payload: AdminRetrievalRefreshRequest) -> AdminRetrievalRefreshResponse:
     return refresh_admin_retrieval_metadata(payload)
+
+
+@router.post("/admin/retrieval-probe", response_model=AdminRetrievalProbeResponse)
+def admin_retrieval_probe(payload: AdminRetrievalProbeRequest) -> AdminRetrievalProbeResponse:
+    return run_admin_retrieval_probe(payload)
 
 
 @router.get("/admin/embedding-readiness", response_model=AdminEmbeddingReadinessResponse)

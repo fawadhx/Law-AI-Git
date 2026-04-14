@@ -404,3 +404,36 @@ class AdminEmbeddingRunResponse(BaseModel):
     skipped_count: int
     sample_records: list[AdminEmbeddingReadinessRecord] = Field(default_factory=list)
     workflow_note: str
+
+
+class AdminRetrievalProbeRequest(BaseModel):
+    query: str
+    limit: int = 6
+
+
+class AdminRetrievalProbeRecord(BaseModel):
+    record_id: str
+    citation_label: str
+    law_name: str
+    section_number: str
+    category: str
+    keyword_score: int
+    vector_similarity: float | None = None
+    vector_bonus: int
+    final_score: int
+    selected: bool
+    exact_section_match: bool
+    excerpt: str
+
+
+class AdminRetrievalProbeResponse(BaseModel):
+    query: str
+    active_source: str
+    source_label: str
+    vector_retrieval_active: bool
+    vector_query_top_k: int
+    keyword_candidate_count: int
+    vector_candidate_count: int
+    selected_count: int
+    records: list[AdminRetrievalProbeRecord] = Field(default_factory=list)
+    workflow_note: str

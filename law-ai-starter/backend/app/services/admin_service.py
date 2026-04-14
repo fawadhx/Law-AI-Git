@@ -34,6 +34,9 @@ from app.schemas.admin import (
     AdminEmbeddingReadinessResponse,
     AdminEmbeddingRunRequest,
     AdminEmbeddingRunResponse,
+    AdminRetrievalProbeRequest,
+    AdminRetrievalProbeRecord,
+    AdminRetrievalProbeResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_source_store import (
@@ -48,6 +51,7 @@ from app.services.legal_source_embedding_service import (
     get_embedding_store_snapshot,
     run_embedding_generation,
 )
+from app.services.legal_retrieval_service import get_retrieval_probe
 
 
 def _active_store_snapshot():
@@ -1055,6 +1059,9 @@ from app.schemas.admin import (
     AdminEmbeddingReadinessResponse,
     AdminEmbeddingRunRequest,
     AdminEmbeddingRunResponse,
+    AdminRetrievalProbeRequest,
+    AdminRetrievalProbeRecord,
+    AdminRetrievalProbeResponse,
 )
 
 WORKSPACE_DRAFT_STORE: dict[str, dict] = {}
@@ -1370,6 +1377,23 @@ def run_admin_embedding_refresh(payload: AdminEmbeddingRunRequest) -> AdminEmbed
         skipped_count=run_result["skipped_count"],
         sample_records=[AdminEmbeddingReadinessRecord(**item) for item in run_result["sample_records"]],
         workflow_note=run_result["workflow_note"],
+    )
+
+
+def run_admin_retrieval_probe(payload: AdminRetrievalProbeRequest) -> AdminRetrievalProbeResponse:
+    probe = get_retrieval_probe(query=payload.query, limit=payload.limit)
+
+    return AdminRetrievalProbeResponse(
+        query=str(probe.get("query", payload.query)),
+        active_source=str(probe.get("active_source", "in_memory")),
+        source_label=str(probe.get("source_label", "In-memory prototype catalog")),
+        vector_retrieval_active=bool(probe.get("vector_retrieval_active", False)),
+        vector_query_top_k=int(probe.get("vector_query_top_k", 0) or 0),
+        keyword_candidate_count=int(probe.get("keyword_candidate_count", 0) or 0),
+        vector_candidate_count=int(probe.get("vector_candidate_count", 0) or 0),
+        selected_count=int(probe.get("selected_count", 0) or 0),
+        records=[AdminRetrievalProbeRecord(**item) for item in probe.get("records", [])],
+        workflow_note=str(probe.get("workflow_note", "")),
     )
 
 
