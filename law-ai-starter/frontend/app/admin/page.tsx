@@ -2143,6 +2143,11 @@ export default function AdminPage() {
                           </div>
                           <div style={{ color: "#ffffff", fontWeight: 600 }}>{item.extracted_section_title || item.draft.section_title || "Untitled section"}</div>
                           <div style={{ color: "#dbe4ff" }}>{item.draft.citation_label || item.draft.law_name}</div>
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                            <div style={chipStyle}>Kind: {item.draft.provision_kind || "—"}</div>
+                            <div style={chipStyle}>Group: {item.draft.offence_group || "—"}</div>
+                            <div style={chipStyle}>Related: {item.draft.related_sections_text || "—"}</div>
+                          </div>
                           <div>
                             <button type="button" onClick={() => loadIngestionCandidateIntoCreateForm(item)} style={secondaryButton}>
                               Load candidate into create form
@@ -2170,6 +2175,18 @@ export default function AdminPage() {
                       <div style={chipStyle}>Section number: {ingestionPreview.extracted_section_number || "—"}</div>
                       <div style={chipStyle}>Section title: {ingestionPreview.extracted_section_title || "—"}</div>
                     </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+                      <div style={chipStyle}>Provision kind: {ingestionPreview.draft.provision_kind || "—"}</div>
+                      <div style={chipStyle}>Offence group: {ingestionPreview.draft.offence_group || "—"}</div>
+                      <div style={chipStyle}>Related sections: {ingestionPreview.draft.related_sections_text || "—"}</div>
+                    </div>
+
+                    {ingestionPreview.draft.punishment_summary && (
+                      <div style={{ ...softCardStyle, color: "#dbe4ff", lineHeight: 1.7 }}>
+                        <strong style={{ color: "#ffffff" }}>Punishment hint:</strong> {ingestionPreview.draft.punishment_summary}
+                      </div>
+                    )}
 
                     {ingestionPreview.duplicate_candidates.length > 0 && (
                       <div style={{ ...softCardStyle, display: "grid", gap: "12px", border: "1px solid rgba(255, 184, 77, 0.25)" }}>
