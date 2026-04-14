@@ -790,6 +790,18 @@ def create_admin_source_record(payload: AdminSourceDraftInput) -> AdminSourceCre
     else:
         refresh_persisted_retrieval_metadata(force_all=False)
 
+    _log_activity(
+        kind="create",
+        title="Created legal source record",
+        detail=(
+            f"Created {saved_record.citation_label} using {save_mode.replace('_', ' ')} mode. "
+            "The record is marked pending so embedding generation can run later if needed."
+        ),
+        status="created",
+        citation_label=saved_record.citation_label,
+        record_id=saved_record.id,
+    )
+
     return AdminSourceCreateResponse(
         create_status="created",
         save_mode=save_mode,
@@ -869,6 +881,22 @@ def update_admin_source_record(record_id: str, payload: AdminSourceDraftInput) -
     else:
         refresh_persisted_retrieval_metadata(force_all=False)
 
+    _log_activity(
+        kind="update",
+        title="Updated legal source record",
+        detail=(
+            f"Updated {saved_record.citation_label} using {save_mode.replace('_', ' ')} mode. "
+            + (
+                "Retrieval metadata changed and the record is pending embedding refresh."
+                if retrieval_changed
+                else "Retrieval metadata stayed aligned with the previous saved version."
+            )
+        ),
+        status="updated",
+        citation_label=saved_record.citation_label,
+        record_id=saved_record.id,
+    )
+
     return AdminSourceUpdateResponse(
         update_status="updated",
         save_mode=save_mode,
@@ -920,6 +948,18 @@ def delete_admin_source_record(record_id: str) -> AdminSourceDeleteResponse:
             )
     else:
         refresh_persisted_retrieval_metadata(force_all=False)
+
+    _log_activity(
+        kind="delete",
+        title="Deleted legal source record",
+        detail=(
+            f"Deleted {existing_record.citation_label} using {save_mode.replace('_', ' ')} mode. "
+            "The active catalog and readiness views can now refresh against the remaining records."
+        ),
+        status="deleted",
+        citation_label=existing_record.citation_label,
+        record_id=record_id,
+    )
 
     return AdminSourceDeleteResponse(
         delete_status="deleted",
@@ -1495,7 +1535,7 @@ def get_admin_activity_feed() -> AdminActivityFeedResponse:
         latest_publish_label=latest_publish.citation_label if latest_publish else None,
         items=list(ACTIVITY_FEED_STORE),
         workflow_note=(
-            "This activity feed is session-only and exists to show prototype publish actions and live-catalog changes during the current server run. "
+            "This activity feed is session-only and now shows prototype publish actions plus create, update, and delete changes performed during the current server run. "
             "It is helpful for testing, but it is not a real audit log yet."
         ),
     )
