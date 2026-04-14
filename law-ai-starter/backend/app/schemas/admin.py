@@ -299,3 +299,51 @@ class AdminPublishExecutionResponse(BaseModel):
     catalog_record_count: int
     activity: AdminActivityRecord
     workflow_note: str
+
+
+class AdminRetrievalReadinessRecord(BaseModel):
+    record_id: str
+    citation_label: str
+    law_name: str
+    section_number: str
+    embedding_status: str
+    has_retrieval_document: bool
+    has_retrieval_fingerprint: bool
+    fingerprint_status: str
+    refresh_needed: bool
+
+
+class AdminRetrievalReadinessResponse(BaseModel):
+    active_source: str
+    source_label: str
+    database_ready: bool
+    foundation_stage: str
+    persisted_record_count: int
+    active_record_count: int
+    embedding_ready_count: int
+    embedding_pending_count: int
+    stale_count: int
+    missing_document_count: int
+    missing_fingerprint_count: int
+    refresh_needed_count: int
+    vector_candidate_count: int
+    sample_records: list[AdminRetrievalReadinessRecord] = Field(default_factory=list)
+    workflow_note: str
+
+
+class AdminRetrievalRefreshRequest(BaseModel):
+    force_all: bool = False
+
+
+class AdminRetrievalRefreshResponse(BaseModel):
+    refresh_applied: bool
+    active_source: str
+    source_label: str
+    refreshed_count: int
+    unchanged_count: int
+    pending_marked_count: int
+    persisted_record_count: int
+    embedding_ready_count: int
+    embedding_pending_count: int
+    sample_records: list[AdminRetrievalReadinessRecord] = Field(default_factory=list)
+    workflow_note: str

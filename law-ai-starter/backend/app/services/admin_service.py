@@ -26,12 +26,18 @@ from app.schemas.admin import (
     AdminActivityFeedResponse,
     AdminActivityRecord,
     AdminPublishExecutionResponse,
+    AdminRetrievalReadinessResponse,
+    AdminRetrievalReadinessRecord,
+    AdminRetrievalRefreshRequest,
+    AdminRetrievalRefreshResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_source_store import (
     get_legal_source_store_diagnostics,
     get_legal_source_store_snapshot,
     get_legal_source_store_status,
+    get_persisted_retrieval_readiness_audit,
+    refresh_persisted_retrieval_metadata,
     upsert_persisted_legal_source,
 )
 
@@ -450,6 +456,7 @@ def get_admin_summary() -> AdminSummaryResponse:
     snapshot = _active_store_snapshot()
     retrieval_store = get_legal_source_store_status()
     diagnostics = get_legal_source_store_diagnostics()
+    readiness_audit = get_persisted_retrieval_readiness_audit()
     active_records = snapshot.records
     total_records = len(active_records)
     law_breakdown = _law_breakdown(active_records)
@@ -461,6 +468,7 @@ def get_admin_summary() -> AdminSummaryResponse:
     foundation_stage = snapshot.foundation_stage.replace("_", " ")
     embedding_coverage_value = f"{diagnostics['embedding_coverage_percent']}%"
     retrieval_profile_value = diagnostics["retrieval_profile_label"]
+    refresh_needed_value = str(readiness_audit['refresh_needed_count'])
 
     return AdminSummaryResponse(
         stats=[
@@ -495,6 +503,11 @@ def get_admin_summary() -> AdminSummaryResponse:
                 value=embedding_coverage_value,
                 title="Embedding coverage",
                 description="Percentage of persisted records that already carry ready embedding metadata for the future vector-search layer.",
+            ),
+            AdminStat(
+                value=refresh_needed_value,
+                title="Metadata refresh needed",
+                description="Persisted records whose normalized retrieval document or fingerprint should be resynchronized before later embedding work.",
             ),
             AdminStat(
                 value=snapshot.source_label,
@@ -556,6 +569,14 @@ def get_admin_summary() -> AdminSummaryResponse:
                 content=(
                     f"Current foundation stage: {foundation_stage}. {snapshot.detail} "
                     f"The current persisted row count is {persisted_value}, and the configured embedding model is {diagnostics['embedding_model']} ({diagnostics['embedding_dimensions']} dimensions)."
+                ),
+            ),
+            AdminStatusCard(
+                title="Retrieval metadata audit",
+                content=(
+                    f"The current persisted-catalog audit found {readiness_audit['refresh_needed_count']} record(s) needing metadata refresh, "
+                    f"with {readiness_audit['stale_count']} stale fingerprint/document pair(s), {readiness_audit['missing_document_count']} missing normalized document(s), "
+                    f"and {readiness_audit['missing_fingerprint_count']} missing fingerprint(s). This keeps Phase 5 honest before real embedding generation is added."
                 ),
             ),
             AdminStatusCard(
@@ -1011,6 +1032,10 @@ from app.schemas.admin import (
     AdminActivityFeedResponse,
     AdminActivityRecord,
     AdminPublishExecutionResponse,
+    AdminRetrievalReadinessResponse,
+    AdminRetrievalReadinessRecord,
+    AdminRetrievalRefreshRequest,
+    AdminRetrievalRefreshResponse,
 )
 
 WORKSPACE_DRAFT_STORE: dict[str, dict] = {}
@@ -1233,6 +1258,50 @@ def get_admin_activity_feed() -> AdminActivityFeedResponse:
         workflow_note=(
             "This activity feed is session-only and exists to show prototype publish actions and live-catalog changes during the current server run. "
             "It is helpful for testing, but it is not a real audit log yet."
+        ),
+    )
+
+
+def get_admin_retrieval_readiness() -> AdminRetrievalReadinessResponse:
+    audit = get_persisted_retrieval_readiness_audit()
+    return AdminRetrievalReadinessResponse(
+        active_source=str(audit.get("active_source", "in_memory")),
+        source_label=str(audit.get("source_label", "In-memory prototype catalog")),
+        database_ready=bool(audit.get("database_ready", False)),
+        foundation_stage=str(audit.get("foundation_stage", "in_memory_only")),
+        persisted_record_count=int(audit.get("persisted_record_count", 0) or 0),
+        active_record_count=int(audit.get("active_record_count", 0) or 0),
+        embedding_ready_count=int(audit.get("embedding_ready_count", 0) or 0),
+        embedding_pending_count=int(audit.get("embedding_pending_count", 0) or 0),
+        stale_count=int(audit.get("stale_count", 0) or 0),
+        missing_document_count=int(audit.get("missing_document_count", 0) or 0),
+        missing_fingerprint_count=int(audit.get("missing_fingerprint_count", 0) or 0),
+        refresh_needed_count=int(audit.get("refresh_needed_count", 0) or 0),
+        vector_candidate_count=int(audit.get("vector_candidate_count", 0) or 0),
+        sample_records=[AdminRetrievalReadinessRecord(**item) for item in audit.get("sample_records", [])],
+        workflow_note=(
+            "This retrieval-readiness view audits the persisted catalog for normalized retrieval-document drift, missing fingerprints, and pending embedding work. "
+            "It helps Phase 5 stay reliable before true embedding generation and vector ranking are switched on."
+        ),
+    )
+
+
+def refresh_admin_retrieval_metadata(payload: AdminRetrievalRefreshRequest) -> AdminRetrievalRefreshResponse:
+    result = refresh_persisted_retrieval_metadata(force_all=payload.force_all)
+    return AdminRetrievalRefreshResponse(
+        refresh_applied=bool(result.get("refresh_applied", False)),
+        active_source=str(result.get("active_source", "in_memory")),
+        source_label=str(result.get("source_label", "In-memory prototype catalog")),
+        refreshed_count=int(result.get("refreshed_count", 0) or 0),
+        unchanged_count=int(result.get("unchanged_count", 0) or 0),
+        pending_marked_count=int(result.get("pending_marked_count", 0) or 0),
+        persisted_record_count=int(result.get("persisted_record_count", 0) or 0),
+        embedding_ready_count=int(result.get("embedding_ready_count", 0) or 0),
+        embedding_pending_count=int(result.get("embedding_pending_count", 0) or 0),
+        sample_records=[AdminRetrievalReadinessRecord(**item) for item in result.get("sample_records", [])],
+        workflow_note=(
+            "This refresh action resynchronizes normalized retrieval documents and fingerprints for persisted records. "
+            "When a fingerprint changes, the record is marked pending again so later embedding-generation steps know it needs a fresh vector."
         ),
     )
 

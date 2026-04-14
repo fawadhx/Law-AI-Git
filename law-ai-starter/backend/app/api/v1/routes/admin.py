@@ -3,6 +3,9 @@ from fastapi import APIRouter, HTTPException
 from app.schemas.admin import (
     AdminPublishExecutionResponse,
     AdminPublishQueueRecord,
+    AdminRetrievalReadinessResponse,
+    AdminRetrievalRefreshRequest,
+    AdminRetrievalRefreshResponse,
     AdminSourceCatalogResponse,
     AdminSourceDetailResponse,
     AdminSourceDraftInput,
@@ -25,6 +28,8 @@ from app.services.admin_service import (
     get_admin_source_catalog,
     get_admin_source_detail,
     get_admin_summary,
+    get_admin_retrieval_readiness,
+    refresh_admin_retrieval_metadata,
     get_admin_workspace,
     get_admin_workspace_draft,
     publish_admin_workspace_package,
@@ -67,6 +72,18 @@ def admin_source_review(payload: AdminSourceDraftInput) -> AdminSourceDraftRevie
 @router.post("/admin/sources/publish-preview", response_model=AdminSourcePublishPreviewResponse)
 def admin_source_publish_preview(payload: AdminSourceDraftInput) -> AdminSourcePublishPreviewResponse:
     return build_admin_source_publish_preview(payload)
+
+
+
+
+@router.get("/admin/retrieval-readiness", response_model=AdminRetrievalReadinessResponse)
+def admin_retrieval_readiness() -> AdminRetrievalReadinessResponse:
+    return get_admin_retrieval_readiness()
+
+
+@router.post("/admin/retrieval-readiness/refresh", response_model=AdminRetrievalRefreshResponse)
+def admin_retrieval_refresh(payload: AdminRetrievalRefreshRequest) -> AdminRetrievalRefreshResponse:
+    return refresh_admin_retrieval_metadata(payload)
 
 
 @router.get("/admin/workspace", response_model=AdminWorkspaceResponse)
