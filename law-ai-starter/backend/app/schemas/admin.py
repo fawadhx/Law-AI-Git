@@ -470,3 +470,20 @@ class AdminSourceDeleteResponse(BaseModel):
     persisted_sync_applied: bool = False
     deleted_title: str = ""
     workflow_note: str
+
+
+class AdminIngestionPreviewRequest(BaseModel):
+    raw_text: str = ""
+    source_title: str = ""
+    law_name: str = ""
+    jurisdiction: str = "Pakistan"
+    citation_hint: str = ""
+
+
+class AdminIngestionPreviewResponse(BaseModel):
+    draft: AdminSourceDraftInput
+    validation: AdminSourceDraftValidationResponse
+    extracted_title: str = ""
+    extracted_section_number: str = ""
+    extracted_section_title: str = ""
+    workflow_note: str

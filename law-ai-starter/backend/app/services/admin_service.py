@@ -709,6 +709,118 @@ def get_admin_source_detail(source_id: str) -> AdminSourceDetailResponse | None:
     )
 
 
+
+
+def _compact_text(value: str) -> str:
+    return " ".join((value or "").strip().split())
+
+
+def _first_nonempty_lines(raw_text: str, limit: int = 6) -> list[str]:
+    lines = [_compact_text(line) for line in (raw_text or "").splitlines()]
+    return [line for line in lines if line][:limit]
+
+
+def _extract_section_number_from_text(raw_text: str) -> str:
+    patterns = [
+        r"(?i)\bsection\s+([0-9A-Za-z\-()/.]+)",
+        r"(?i)\bs\.\s*([0-9A-Za-z\-()/.]+)",
+        r"(?i)\barticle\s+([0-9A-Za-z\-()/.]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, raw_text or "")
+        if match:
+            return _compact_text(match.group(1))
+    return ""
+
+
+def _extract_section_title_from_text(raw_text: str) -> str:
+    lines = _first_nonempty_lines(raw_text, limit=8)
+    for line in lines:
+        for pattern in [
+            r"(?i)^(?:section|article)\s+[0-9A-Za-z\-()/.]+\s*[:\-–]\s*(.+)$",
+            r"(?i)^(?:section|article)\s+[0-9A-Za-z\-()/.]+\s+(.+)$",
+        ]:
+            match = re.match(pattern, line)
+            if match:
+                return _compact_text(match.group(1))
+    if len(lines) >= 2:
+        return lines[1][:140]
+    return lines[0][:140] if lines else ""
+
+
+def _extract_summary_from_text(raw_text: str) -> str:
+    compact = _compact_text(raw_text)
+    if not compact:
+        return ""
+    sentence_split = re.split(r"(?<=[.!?])\s+", compact)
+    first_sentence = sentence_split[0].strip() if sentence_split else compact
+    if len(first_sentence) >= 40:
+        return first_sentence[:280]
+    return compact[:280]
+
+
+def _extract_keywords_from_text(raw_text: str, limit: int = 8) -> str:
+    tokens = re.findall(r"[A-Za-z][A-Za-z\-]{3,}", (raw_text or "").lower())
+    stop_words = {
+        "that", "this", "with", "from", "have", "shall", "will", "been", "being", "under",
+        "into", "where", "when", "which", "their", "there", "here", "such", "than", "then",
+        "they", "them", "person", "persons", "other", "must", "more", "each", "every",
+    }
+    counts: dict[str, int] = {}
+    for token in tokens:
+        if token in stop_words:
+            continue
+        counts[token] = counts.get(token, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return ", ".join([word for word, _ in ranked[:limit]])
+
+
+def preview_admin_ingestion(payload: AdminIngestionPreviewRequest) -> AdminIngestionPreviewResponse:
+    raw_text = (payload.raw_text or "").strip()
+    lines = _first_nonempty_lines(raw_text, limit=6)
+    extracted_title = payload.source_title.strip() or (lines[0] if lines else "")
+    extracted_section_number = _extract_section_number_from_text(raw_text)
+    extracted_section_title = _extract_section_title_from_text(raw_text)
+
+    citation_label = payload.citation_hint.strip()
+    if not citation_label and payload.law_name.strip() and extracted_section_number:
+        citation_label = f"{payload.law_name.strip()} s. {extracted_section_number}"
+
+    preview_draft = AdminSourceDraftInput(
+        id="",
+        source_title=payload.source_title.strip() or payload.law_name.strip() or extracted_title,
+        law_name=payload.law_name.strip() or payload.source_title.strip() or extracted_title,
+        section_number=extracted_section_number,
+        section_title=extracted_section_title,
+        summary=_extract_summary_from_text(raw_text),
+        excerpt=raw_text[:5000],
+        citation_label=citation_label,
+        jurisdiction=payload.jurisdiction.strip() or "Pakistan",
+        provision_kind="general",
+        offence_group="",
+        punishment_summary="",
+        tags_text="",
+        aliases_text="",
+        keywords_text=_extract_keywords_from_text(raw_text),
+        related_sections_text="",
+    )
+    normalized = _normalize_draft(preview_draft)
+    validation = validate_admin_source_draft(normalized)
+
+    return AdminIngestionPreviewResponse(
+        draft=normalized,
+        validation=validation,
+        extracted_title=extracted_title,
+        extracted_section_number=extracted_section_number,
+        extracted_section_title=extracted_section_title,
+        workflow_note=(
+            "This starts Phase 7: source ingestion workflow. "
+            "The backend now converts pasted legal text into a draft-ready admin record preview using simple extraction heuristics. "
+            "No data is saved yet; this is only a parsing and validation preview."
+        ),
+    )
+
+
 def validate_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftValidationResponse:
     normalized = _normalize_draft(payload)
     issues, related_section_check = _validate_draft(normalized)
