@@ -664,6 +664,9 @@ export default function AdminPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createResult, setCreateResult] = useState<AdminSourceCreateResponse | null>(null);
+  const [persistUpdateLoading, setPersistUpdateLoading] = useState(false);
+  const [persistUpdateError, setPersistUpdateError] = useState("");
+  const [persistUpdateResult, setPersistUpdateResult] = useState<AdminSourceUpdateResponse | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [draftValidation, setDraftValidation] = useState<AdminSourceDraftValidationResponse | null>(null);
@@ -996,42 +999,37 @@ export default function AdminPage() {
     }
   }, [filteredItems, selectedSourceId]);
 
+  async function loadSourceDetail(recordId: string) {
+    try {
+      setDetailLoading(true);
+      setDetailError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/${recordId}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Detail request failed with status ${response.status}`);
+      }
+
+      const result: AdminSourceDetailResponse = await response.json();
+      setDetail(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setDetailError(err.message || "Failed to load source detail.");
+      }
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!selectedSourceId) {
       return;
     }
 
-    const controller = new AbortController();
-
-    async function loadDetail() {
-      try {
-        setDetailLoading(true);
-        setDetailError("");
-
-        const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/${selectedSourceId}`, {
-          method: "GET",
-          signal: controller.signal,
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error(`Detail request failed with status ${response.status}`);
-        }
-
-        const result: AdminSourceDetailResponse = await response.json();
-        setDetail(result);
-      } catch (err) {
-        if (err instanceof Error && err.name !== "AbortError") {
-          setDetailError(err.message || "Failed to load source detail.");
-        }
-      } finally {
-        setDetailLoading(false);
-      }
-    }
-
-    loadDetail();
-
-    return () => controller.abort();
+    loadSourceDetail(selectedSourceId);
   }, [selectedSourceId]);
 
   useEffect(() => {
@@ -1048,6 +1046,8 @@ export default function AdminPage() {
     setReviewError("");
     setPublishPreview(null);
     setPublishError("");
+    setPersistUpdateResult(null);
+    setPersistUpdateError("");
   }, [detail]);
 
   async function validateDraft() {
@@ -1341,6 +1341,93 @@ export default function AdminPage() {
     setReviewError("");
     setPublishError("");
     setWorkspaceActionError("");
+  }
+
+  function updateCreateField(field: keyof AdminDraftForm, value: string) {
+    setCreateForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function submitCreateRecord() {
+    try {
+      setCreateLoading(true);
+      setCreateError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/source-records`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(draftFormToPayload(createForm)),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Create source request failed with status ${response.status}`);
+      }
+
+      const result: AdminSourceCreateResponse = await response.json();
+      setCreateResult(result);
+
+      if (result.create_status === "created" && result.record_id) {
+        await Promise.all([
+          loadAdminSnapshot(result.record_id),
+          loadRetrievalReadiness(),
+          loadEmbeddingReadiness(),
+          loadActivity(),
+        ]);
+        setCreateForm(createEmptyDraftForm());
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        setCreateError(err.message || "Failed to create source record.");
+      }
+    } finally {
+      setCreateLoading(false);
+    }
+  }
+
+  async function submitPersistedUpdate() {
+    if (!draftForm || !selectedSourceId) {
+      return;
+    }
+
+    try {
+      setPersistUpdateLoading(true);
+      setPersistUpdateError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/source-records/${selectedSourceId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(draftFormToPayload(draftForm)),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Persisted update failed with status ${response.status}`);
+      }
+
+      const result: AdminSourceUpdateResponse = await response.json();
+      setPersistUpdateResult(result);
+
+      if (result.update_status === "updated" && selectedSourceId) {
+        await Promise.all([
+          loadAdminSnapshot(selectedSourceId),
+          loadSourceDetail(selectedSourceId),
+          loadRetrievalReadiness(),
+          loadEmbeddingReadiness(),
+          loadActivity(),
+        ]);
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        setPersistUpdateError(err.message || "Failed to save persisted update.");
+      }
+    } finally {
+      setPersistUpdateLoading(false);
+    }
   }
 
   function resetDraftFromSelected() {
@@ -2953,6 +3040,9 @@ Working draft editor + review gate + publish preview
                     <button type="button" onClick={buildPublishPreview} style={secondaryButton} disabled={!draftForm || publishLoading}>
                       {publishLoading ? "Building..." : "Build publish preview"}
                     </button>
+                    <button type="button" onClick={submitPersistedUpdate} style={secondaryButton} disabled={!draftForm || !selectedSourceId || persistUpdateLoading}>
+                      {persistUpdateLoading ? "Saving..." : "Save persisted edit"}
+                    </button>
                     <button type="button" onClick={saveDraftToWorkspace} style={secondaryButton} disabled={!draftForm || workspaceBusy}>
                       {workspaceBusy ? "Working..." : workspaceDraftId ? "Update workspace draft" : "Save to workspace"}
                     </button>
@@ -3060,6 +3150,39 @@ Working draft editor + review gate + publish preview
                   {draftError && (
                     <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
                       Failed to validate draft: {draftError}
+                    </div>
+                  )}
+
+                  {persistUpdateError && (
+                    <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                      Failed to save persisted update: {persistUpdateError}
+                    </div>
+                  )}
+
+                  {persistUpdateResult && (
+                    <div style={{ ...softCardStyle, display: "grid", gap: "12px" }}>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <div style={badge(persistUpdateResult.update_status === "updated" ? "green" : "pink")}>
+                          {prettyKind(persistUpdateResult.update_status)}
+                        </div>
+                        <div style={badge(persistUpdateResult.save_mode === "database" ? "green" : "blue")}>
+                          Save mode: {prettyKind(persistUpdateResult.save_mode)}
+                        </div>
+                        <div style={badge(persistUpdateResult.retrieval_changed ? "green" : "blue")}>
+                          {persistUpdateResult.retrieval_changed ? "Retrieval changed" : "Retrieval unchanged"}
+                        </div>
+                      </div>
+
+                      <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>
+                        {persistUpdateResult.workflow_note}
+                      </div>
+
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        <div style={chipStyle}>Readiness {persistUpdateResult.validation.readiness_score}</div>
+                        <div style={chipStyle}>Issues {persistUpdateResult.validation.issue_count}</div>
+                        <div style={chipStyle}>Errors {persistUpdateResult.validation.error_count}</div>
+                        <div style={chipStyle}>Warnings {persistUpdateResult.validation.warning_count}</div>
+                      </div>
                     </div>
                   )}
 
