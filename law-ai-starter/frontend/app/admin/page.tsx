@@ -665,6 +665,14 @@ export default function AdminPage() {
   const [createError, setCreateError] = useState("");
   const [createResult, setCreateResult] = useState<AdminSourceCreateResponse | null>(null);
   const [createTemplateNote, setCreateTemplateNote] = useState("");
+  const [ingestionSourceTitle, setIngestionSourceTitle] = useState("Pakistan Penal Code");
+  const [ingestionLawName, setIngestionLawName] = useState("Pakistan Penal Code");
+  const [ingestionJurisdiction, setIngestionJurisdiction] = useState("Pakistan");
+  const [ingestionCitationHint, setIngestionCitationHint] = useState("");
+  const [ingestionRawText, setIngestionRawText] = useState("");
+  const [ingestionLoading, setIngestionLoading] = useState(false);
+  const [ingestionError, setIngestionError] = useState("");
+  const [ingestionPreview, setIngestionPreview] = useState<AdminIngestionPreviewResponse | null>(null);
   const [persistUpdateLoading, setPersistUpdateLoading] = useState(false);
   const [persistUpdateError, setPersistUpdateError] = useState("");
   const [persistUpdateResult, setPersistUpdateResult] = useState<AdminSourceUpdateResponse | null>(null);
@@ -1423,6 +1431,51 @@ export default function AdminPage() {
     );
   }
 
+  async function runIngestionPreview() {
+    if (!ingestionRawText.trim()) {
+      setIngestionError("Paste legal source text first, then run ingestion preview.");
+      return;
+    }
+
+    try {
+      setIngestionLoading(true);
+      setIngestionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/ingestion/preview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source_title: ingestionSourceTitle,
+          law_name: ingestionLawName,
+          jurisdiction: ingestionJurisdiction,
+          citation_hint: ingestionCitationHint,
+          raw_text: ingestionRawText,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Ingestion preview failed with status ${response.status}`);
+      }
+
+      const result: AdminIngestionPreviewResponse = await response.json();
+      setIngestionPreview(result);
+      setCreateForm(result.draft);
+      setCreateResult(null);
+      setCreateError("");
+      setCreateTemplateNote(
+        "Loaded parsed ingestion preview into the create form. Review the extracted fields, then save the new source record."
+      );
+    } catch (err) {
+      if (err instanceof Error) {
+        setIngestionError(err.message || "Failed to build ingestion preview.");
+      }
+    } finally {
+      setIngestionLoading(false);
+    }
+  }
+
   async function submitCreateRecord() {
     try {
       setCreateLoading(true);
@@ -1943,6 +1996,74 @@ export default function AdminPage() {
 
               <div style={{ color: "#dbe4ff", lineHeight: 1.7, marginBottom: "18px", maxWidth: "980px" }}>
                 This is the first database-backed creation form for admin. Submit a new legal source draft here and the backend will validate it, build retrieval metadata, and save it to the database when persistence is available.
+              </div>
+
+              <div style={{ ...softCardStyle, display: "grid", gap: "14px", marginBottom: "18px" }}>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={badge("green")}>Phase 7 ingestion preview</div>
+                  <div style={{ color: "#dbe4ff" }}>Paste legal text and turn it into a draft-ready create form.</div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }}>
+                  <div>
+                    <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Source title</div>
+                    <input value={ingestionSourceTitle} onChange={(event) => setIngestionSourceTitle(event.target.value)} style={fieldStyle} placeholder="Pakistan Penal Code" />
+                  </div>
+                  <div>
+                    <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Law name</div>
+                    <input value={ingestionLawName} onChange={(event) => setIngestionLawName(event.target.value)} style={fieldStyle} placeholder="Pakistan Penal Code" />
+                  </div>
+                  <div>
+                    <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Jurisdiction</div>
+                    <input value={ingestionJurisdiction} onChange={(event) => setIngestionJurisdiction(event.target.value)} style={fieldStyle} placeholder="Pakistan" />
+                  </div>
+                  <div>
+                    <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Citation hint</div>
+                    <input value={ingestionCitationHint} onChange={(event) => setIngestionCitationHint(event.target.value)} style={fieldStyle} placeholder="optional override" />
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Pasted legal text</div>
+                  <textarea
+                    value={ingestionRawText}
+                    onChange={(event) => setIngestionRawText(event.target.value)}
+                    rows={8}
+                    style={{ ...fieldStyle, resize: "vertical", minHeight: "180px" }}
+                    placeholder="Paste a legal section, article, or source excerpt here..."
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  <button type="button" onClick={runIngestionPreview} style={secondaryButton} disabled={ingestionLoading}>
+                    {ingestionLoading ? "Previewing..." : "Preview ingestion"}
+                  </button>
+                </div>
+
+                {ingestionError && (
+                  <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                    {ingestionError}
+                  </div>
+                )}
+
+                {ingestionPreview && (
+                  <div style={{ ...softCardStyle, display: "grid", gap: "12px" }}>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <div style={chipStyle}>Readiness {ingestionPreview.validation.readiness_score}</div>
+                      <div style={chipStyle}>Issues {ingestionPreview.validation.issue_count}</div>
+                      <div style={chipStyle}>Errors {ingestionPreview.validation.error_count}</div>
+                      <div style={chipStyle}>Warnings {ingestionPreview.validation.warning_count}</div>
+                    </div>
+
+                    <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{ingestionPreview.workflow_note}</div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+                      <div style={chipStyle}>Extracted title: {ingestionPreview.extracted_title || "—"}</div>
+                      <div style={chipStyle}>Section number: {ingestionPreview.extracted_section_number || "—"}</div>
+                      <div style={chipStyle}>Section title: {ingestionPreview.extracted_section_title || "—"}</div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "16px" }}>
