@@ -309,6 +309,34 @@ type AdminPublishExecutionResponse = {
   workflow_note: string;
 };
 
+type AdminRetrievalProbeRecord = {
+  record_id: string;
+  citation_label: string;
+  law_name: string;
+  section_number: string;
+  category: string;
+  keyword_score: number;
+  vector_similarity: number | null;
+  vector_bonus: number;
+  final_score: number;
+  selected: boolean;
+  exact_section_match: boolean;
+  excerpt: string;
+};
+
+type AdminRetrievalProbeResponse = {
+  query: string;
+  active_source: string;
+  source_label: string;
+  vector_retrieval_active: boolean;
+  vector_query_top_k: number;
+  keyword_candidate_count: number;
+  vector_candidate_count: number;
+  selected_count: number;
+  records: AdminRetrievalProbeRecord[];
+  workflow_note: string;
+};
+
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -533,6 +561,10 @@ export default function AdminPage() {
   const [activity, setActivity] = useState<AdminActivityFeedResponse | null>(null);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState("");
+  const [probeQuery, setProbeQuery] = useState("Can police arrest someone without warrant for online blackmail?");
+  const [probeResult, setProbeResult] = useState<AdminRetrievalProbeResponse | null>(null);
+  const [probeLoading, setProbeLoading] = useState(false);
+  const [probeError, setProbeError] = useState("");
 
   async function loadAdminSnapshot(preferredSourceId?: string) {
     try {
@@ -636,10 +668,48 @@ export default function AdminPage() {
     }
   }
 
+  async function runRetrievalProbe(nextQuery?: string) {
+    const query = (nextQuery ?? probeQuery).trim();
+    if (!query) {
+      setProbeError("Enter a retrieval query first.");
+      return;
+    }
+
+    try {
+      setProbeLoading(true);
+      setProbeError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/retrieval-probe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          limit: 6,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Retrieval probe failed with status ${response.status}`);
+      }
+
+      const result: AdminRetrievalProbeResponse = await response.json();
+      setProbeResult(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setProbeError(err.message || "Failed to run retrieval probe.");
+      }
+    } finally {
+      setProbeLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadAdminSnapshot();
     loadWorkspace();
     loadActivity();
+    runRetrievalProbe("Can police arrest someone without warrant for online blackmail?");
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -2104,6 +2174,137 @@ export default function AdminPage() {
                       </div>
                     </>
                   )}
+                </div>
+              )}
+            </section>
+
+            <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
+              <div style={{ ...badge("green"), marginBottom: "12px" }}>Phase 5 retrieval probe</div>
+              <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
+                Hybrid retrieval inspection
+              </div>
+
+              <div style={{ color: "#dbe4ff", lineHeight: 1.7, marginBottom: "16px", maxWidth: "980px" }}>
+                Test any legal query from admin and inspect how keyword scoring and vector similarity combine before the final records are selected for chat context.
+              </div>
+
+              <div style={{ display: "grid", gap: "14px", marginBottom: "18px" }}>
+                <div>
+                  <div style={{ color: "#a9c1ff", fontSize: "13px", marginBottom: "8px" }}>Probe query</div>
+                  <textarea
+                    value={probeQuery}
+                    onChange={(event) => setProbeQuery(event.target.value)}
+                    rows={3}
+                    style={{ ...fieldStyle, resize: "vertical", minHeight: "96px" }}
+                    placeholder="Ask a legal retrieval question to inspect ranking."
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => runRetrievalProbe()} style={secondaryButton} disabled={probeLoading}>
+                    {probeLoading ? "Running probe..." : "Run retrieval probe"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sample = "Can police arrest someone without warrant for online blackmail?";
+                      setProbeQuery(sample);
+                      runRetrievalProbe(sample);
+                    }}
+                    style={secondaryButton}
+                    disabled={probeLoading}
+                  >
+                    Load sample query
+                  </button>
+                </div>
+
+                {probeError && (
+                  <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                    Failed to run probe: {probeError}
+                  </div>
+                )}
+              </div>
+
+              {probeResult && (
+                <div style={{ display: "grid", gap: "18px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+                    <div style={softCardStyle}>
+                      <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Active source</div>
+                      <div style={{ fontSize: "16px", fontWeight: 700 }}>{probeResult.source_label}</div>
+                    </div>
+                    <div style={softCardStyle}>
+                      <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Vector retrieval</div>
+                      <div style={{ fontSize: "16px", fontWeight: 700 }}>
+                        {probeResult.vector_retrieval_active ? "Active" : "Fallback only"}
+                      </div>
+                    </div>
+                    <div style={softCardStyle}>
+                      <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Keyword candidates</div>
+                      <div style={{ fontSize: "28px", fontWeight: 800 }}>{probeResult.keyword_candidate_count}</div>
+                    </div>
+                    <div style={softCardStyle}>
+                      <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Vector candidates</div>
+                      <div style={{ fontSize: "28px", fontWeight: 800 }}>{probeResult.vector_candidate_count}</div>
+                    </div>
+                    <div style={softCardStyle}>
+                      <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>Selected for chat</div>
+                      <div style={{ fontSize: "28px", fontWeight: 800 }}>{probeResult.selected_count}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{probeResult.workflow_note}</div>
+
+                  <div style={{ display: "grid", gap: "12px" }}>
+                    {probeResult.records.length === 0 ? (
+                      <div style={softCardStyle}>No retrieval candidates were returned for this query.</div>
+                    ) : (
+                      probeResult.records.map((item) => (
+                        <div key={item.record_id} style={{ ...softCardStyle, padding: "16px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", marginBottom: "10px" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, color: "#ffffff", marginBottom: "6px" }}>
+                                {item.citation_label} · {item.law_name} {item.section_number}
+                              </div>
+                              <div style={{ color: "#aac0ff", fontSize: "13px" }}>
+                                {prettyKind(item.category)}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                              <div style={badge(item.selected ? "green" : "blue")}>
+                                {item.selected ? "Selected" : "Candidate"}
+                              </div>
+                              {item.exact_section_match && <div style={badge("green")}>Exact section match</div>}
+                            </div>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px", marginBottom: "12px" }}>
+                            <div style={softCardStyle}>
+                              <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Keyword score</div>
+                              <div style={{ fontSize: "22px", fontWeight: 800 }}>{item.keyword_score}</div>
+                            </div>
+                            <div style={softCardStyle}>
+                              <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Vector bonus</div>
+                              <div style={{ fontSize: "22px", fontWeight: 800 }}>{item.vector_bonus}</div>
+                            </div>
+                            <div style={softCardStyle}>
+                              <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Final score</div>
+                              <div style={{ fontSize: "22px", fontWeight: 800 }}>{item.final_score}</div>
+                            </div>
+                            <div style={softCardStyle}>
+                              <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Vector similarity</div>
+                              <div style={{ fontSize: "22px", fontWeight: 800 }}>
+                                {item.vector_similarity === null ? "—" : item.vector_similarity.toFixed(3)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ color: "#dbe4ff", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                            {item.excerpt}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </section>
