@@ -448,3 +448,15 @@ class AdminSourceCreateResponse(BaseModel):
     item: AdminSourceRecord | None = None
     validation: AdminSourceDraftValidationResponse
     workflow_note: str
+
+
+class AdminSourceUpdateResponse(BaseModel):
+    update_status: str
+    save_mode: str
+    record_id: str | None = None
+    citation_label: str = ""
+    retrieval_changed: bool = False
+    persisted_sync_applied: bool = False
+    item: AdminSourceRecord | None = None
+    validation: AdminSourceDraftValidationResponse
+    workflow_note: str

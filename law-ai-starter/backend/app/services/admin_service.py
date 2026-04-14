@@ -38,6 +38,7 @@ from app.schemas.admin import (
     AdminRetrievalProbeRecord,
     AdminRetrievalProbeResponse,
     AdminSourceCreateResponse,
+    AdminSourceUpdateResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
 from app.services.legal_source_store import (
@@ -803,6 +804,86 @@ def create_admin_source_record(payload: AdminSourceDraftInput) -> AdminSourceCre
     )
 
 
+def update_admin_source_record(record_id: str, payload: AdminSourceDraftInput) -> AdminSourceUpdateResponse:
+    existing_record = _record_index(_active_records()).get(record_id)
+    if existing_record is None:
+        normalized = _normalize_draft(payload)
+        validation = validate_admin_source_draft(normalized)
+        return AdminSourceUpdateResponse(
+            update_status="blocked",
+            save_mode="none",
+            record_id=record_id,
+            citation_label=normalized.citation_label,
+            retrieval_changed=False,
+            persisted_sync_applied=False,
+            item=None,
+            validation=validation,
+            workflow_note=(
+                "This update request was blocked because the target record was not found in the active catalog."
+            ),
+        )
+
+    normalized = _normalize_draft(payload).model_copy(update={"id": record_id})
+    validation = validate_admin_source_draft(normalized)
+
+    if validation.error_count > 0:
+        return AdminSourceUpdateResponse(
+            update_status="blocked",
+            save_mode="none",
+            record_id=record_id,
+            citation_label=normalized.citation_label or existing_record.citation_label,
+            retrieval_changed=False,
+            persisted_sync_applied=False,
+            item=_build_source_record(existing_record),
+            validation=validation,
+            workflow_note=(
+                "This update request was blocked because the edited draft still has validation errors. "
+                "Fix the required fields first, then save again."
+            ),
+        )
+
+    updated_record = _draft_to_live_record(normalized, record_id=record_id)
+    retrieval_document = build_retrieval_document(updated_record)
+    retrieval_fingerprint = build_retrieval_fingerprint_for_document(retrieval_document)
+    retrieval_changed = retrieval_fingerprint != existing_record.retrieval_fingerprint
+
+    updated_record = updated_record.model_copy(
+        update={
+            "retrieval_document": retrieval_document,
+            "retrieval_fingerprint": retrieval_fingerprint,
+            "embedding_status": "pending" if retrieval_changed else existing_record.embedding_status,
+            "embedding_model": None if retrieval_changed else existing_record.embedding_model,
+            "embedding_dimensions": None if retrieval_changed else existing_record.embedding_dimensions,
+            "embedding_updated_at": None if retrieval_changed else existing_record.embedding_updated_at,
+        }
+    )
+
+    persisted_sync_applied = upsert_persisted_legal_source(updated_record)
+    save_mode = "database" if persisted_sync_applied else "in_memory"
+    saved_record = updated_record
+
+    if not persisted_sync_applied:
+        saved_record = _upsert_live_record(normalized, target_record_id=record_id)
+    else:
+        refresh_persisted_retrieval_metadata(force_all=False)
+
+    return AdminSourceUpdateResponse(
+        update_status="updated",
+        save_mode=save_mode,
+        record_id=saved_record.id,
+        citation_label=saved_record.citation_label,
+        retrieval_changed=retrieval_changed,
+        persisted_sync_applied=persisted_sync_applied,
+        item=_build_source_record(saved_record),
+        validation=validation,
+        workflow_note=(
+            "This is the first real persisted edit step for Phase 6. "
+            "The selected legal source record is now updated in the active store, and retrieval metadata is recalculated automatically. "
+            "If retrieval content changed, the record is marked pending so embeddings can be regenerated later."
+        ),
+    )
+
+
 FIELD_LABELS = {
     "source_title": "Source title",
     "law_name": "Law name",
@@ -1141,6 +1222,7 @@ from app.schemas.admin import (
     AdminRetrievalProbeRecord,
     AdminRetrievalProbeResponse,
     AdminSourceCreateResponse,
+    AdminSourceUpdateResponse,
 )
 
 WORKSPACE_DRAFT_STORE: dict[str, dict] = {}
