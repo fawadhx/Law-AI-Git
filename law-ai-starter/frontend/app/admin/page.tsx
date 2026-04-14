@@ -2062,6 +2062,31 @@ export default function AdminPage() {
                       <div style={chipStyle}>Section number: {ingestionPreview.extracted_section_number || "—"}</div>
                       <div style={chipStyle}>Section title: {ingestionPreview.extracted_section_title || "—"}</div>
                     </div>
+
+                    {ingestionPreview.duplicate_candidates.length > 0 && (
+                      <div style={{ ...softCardStyle, display: "grid", gap: "12px", border: "1px solid rgba(255, 184, 77, 0.25)" }}>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                          <div style={badge("yellow")}>Possible duplicates</div>
+                          <div style={{ color: "#ffe8bf" }}>
+                            Review these before saving the new source record.
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gap: "10px" }}>
+                          {ingestionPreview.duplicate_candidates.map((candidate) => (
+                            <div key={candidate.record_id} style={{ ...glassCardStyle, display: "grid", gap: "8px" }}>
+                              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                                <div style={chipStyle}>{candidate.citation_label}</div>
+                                <div style={chipStyle}>Record id: {candidate.record_id}</div>
+                              </div>
+                              <div style={{ color: "#ffffff", fontWeight: 600 }}>{candidate.section_title || "Untitled section"}</div>
+                              <div style={{ color: "#dbe4ff" }}>{candidate.law_name}</div>
+                              <div style={{ color: "#ffe8bf" }}>Match reason: {candidate.match_reason}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
