@@ -337,6 +337,102 @@ type AdminRetrievalProbeResponse = {
   workflow_note: string;
 };
 
+type AdminRetrievalReadinessRecord = {
+  record_id: string;
+  citation_label: string;
+  law_name: string;
+  section_number: string;
+  embedding_status: string;
+  has_retrieval_document: boolean;
+  has_retrieval_fingerprint: boolean;
+  fingerprint_status: string;
+  refresh_needed: boolean;
+};
+
+type AdminRetrievalReadinessResponse = {
+  active_source: string;
+  source_label: string;
+  database_ready: boolean;
+  foundation_stage: string;
+  persisted_record_count: number;
+  active_record_count: number;
+  embedding_ready_count: number;
+  embedding_pending_count: number;
+  stale_count: number;
+  missing_document_count: number;
+  missing_fingerprint_count: number;
+  refresh_needed_count: number;
+  vector_candidate_count: number;
+  sample_records: AdminRetrievalReadinessRecord[];
+  workflow_note: string;
+};
+
+type AdminRetrievalRefreshResponse = {
+  refresh_applied: boolean;
+  active_source: string;
+  source_label: string;
+  refreshed_count: number;
+  unchanged_count: number;
+  pending_marked_count: number;
+  persisted_record_count: number;
+  embedding_ready_count: number;
+  embedding_pending_count: number;
+  sample_records: AdminRetrievalReadinessRecord[];
+  workflow_note: string;
+};
+
+type AdminEmbeddingReadinessRecord = {
+  record_id: string;
+  citation_label: string;
+  law_name: string;
+  section_number: string;
+  embedding_status: string;
+  has_vector: boolean;
+  fingerprint_match: boolean;
+  model_name: string | null;
+  dimensions: number | null;
+  refresh_needed: boolean;
+  last_error: string | null;
+};
+
+type AdminEmbeddingReadinessResponse = {
+  provider_ready: boolean;
+  api_key_configured: boolean;
+  active_source: string;
+  source_label: string;
+  database_ready: boolean;
+  foundation_stage: string;
+  persisted_record_count: number;
+  vector_row_count: number;
+  ready_vector_count: number;
+  pending_count: number;
+  error_count: number;
+  runnable_count: number;
+  sample_records: AdminEmbeddingReadinessRecord[];
+  workflow_note: string;
+};
+
+type AdminEmbeddingRunResponse = {
+  run_attempted: boolean;
+  provider_ready: boolean;
+  api_key_configured: boolean;
+  active_source: string;
+  source_label: string;
+  database_ready: boolean;
+  foundation_stage: string;
+  persisted_record_count: number;
+  vector_row_count: number;
+  ready_vector_count: number;
+  pending_count: number;
+  error_count: number;
+  runnable_count: number;
+  processed_count: number;
+  success_count: number;
+  skipped_count: number;
+  sample_records: AdminEmbeddingReadinessRecord[];
+  workflow_note: string;
+};
+
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -565,6 +661,17 @@ export default function AdminPage() {
   const [probeResult, setProbeResult] = useState<AdminRetrievalProbeResponse | null>(null);
   const [probeLoading, setProbeLoading] = useState(false);
   const [probeError, setProbeError] = useState("");
+  const [retrievalReadiness, setRetrievalReadiness] = useState<AdminRetrievalReadinessResponse | null>(null);
+  const [retrievalReadinessLoading, setRetrievalReadinessLoading] = useState(true);
+  const [retrievalReadinessError, setRetrievalReadinessError] = useState("");
+  const [retrievalRefreshLoading, setRetrievalRefreshLoading] = useState(false);
+  const [retrievalRefreshNote, setRetrievalRefreshNote] = useState("");
+  const [embeddingReadiness, setEmbeddingReadiness] = useState<AdminEmbeddingReadinessResponse | null>(null);
+  const [embeddingReadinessLoading, setEmbeddingReadinessLoading] = useState(true);
+  const [embeddingReadinessError, setEmbeddingReadinessError] = useState("");
+  const [embeddingRunLoading, setEmbeddingRunLoading] = useState(false);
+  const [embeddingRunLimit, setEmbeddingRunLimit] = useState("10");
+  const [embeddingRunNote, setEmbeddingRunNote] = useState("");
 
   async function loadAdminSnapshot(preferredSourceId?: string) {
     try {
@@ -705,10 +812,115 @@ export default function AdminPage() {
     }
   }
 
+  async function loadRetrievalReadiness() {
+    try {
+      setRetrievalReadinessLoading(true);
+      setRetrievalReadinessError("");
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/retrieval-readiness`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`Retrieval readiness failed with status ${response.status}`);
+      }
+      const result: AdminRetrievalReadinessResponse = await response.json();
+      setRetrievalReadiness(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setRetrievalReadinessError(err.message || "Failed to load retrieval readiness.");
+      }
+    } finally {
+      setRetrievalReadinessLoading(false);
+    }
+  }
+
+  async function runRetrievalRefresh(forceAll = false) {
+    try {
+      setRetrievalRefreshLoading(true);
+      setRetrievalRefreshNote("");
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/retrieval-readiness/refresh`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          force_all: forceAll,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Retrieval refresh failed with status ${response.status}`);
+      }
+      const result: AdminRetrievalRefreshResponse = await response.json();
+      setRetrievalRefreshNote(result.workflow_note);
+      await Promise.all([loadRetrievalReadiness(), loadAdminSnapshot(), loadWorkspace()]);
+    } catch (err) {
+      if (err instanceof Error) {
+        setRetrievalReadinessError(err.message || "Failed to refresh retrieval metadata.");
+      }
+    } finally {
+      setRetrievalRefreshLoading(false);
+    }
+  }
+
+  async function loadEmbeddingReadiness() {
+    try {
+      setEmbeddingReadinessLoading(true);
+      setEmbeddingReadinessError("");
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/embedding-readiness`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`Embedding readiness failed with status ${response.status}`);
+      }
+      const result: AdminEmbeddingReadinessResponse = await response.json();
+      setEmbeddingReadiness(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setEmbeddingReadinessError(err.message || "Failed to load embedding readiness.");
+      }
+    } finally {
+      setEmbeddingReadinessLoading(false);
+    }
+  }
+
+  async function runEmbeddingGeneration() {
+    const parsedLimit = Math.max(1, Number.parseInt(embeddingRunLimit || "10", 10) || 10);
+
+    try {
+      setEmbeddingRunLoading(true);
+      setEmbeddingRunNote("");
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/embedding-readiness/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          limit: parsedLimit,
+          record_ids: [],
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Embedding run failed with status ${response.status}`);
+      }
+      const result: AdminEmbeddingRunResponse = await response.json();
+      setEmbeddingRunNote(result.workflow_note);
+      await Promise.all([loadEmbeddingReadiness(), loadRetrievalReadiness(), loadAdminSnapshot()]);
+    } catch (err) {
+      if (err instanceof Error) {
+        setEmbeddingReadinessError(err.message || "Failed to run embedding generation.");
+      }
+    } finally {
+      setEmbeddingRunLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadAdminSnapshot();
     loadWorkspace();
     loadActivity();
+    loadRetrievalReadiness();
+    loadEmbeddingReadiness();
     runRetrievalProbe("Can police arrest someone without warrant for online blackmail?");
   }, []);
 
@@ -2176,6 +2388,158 @@ export default function AdminPage() {
                   )}
                 </div>
               )}
+            </section>
+
+            <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
+              <div style={{ ...badge("green"), marginBottom: "12px" }}>Phase 5 data operations</div>
+              <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
+                Retrieval metadata and embedding controls
+              </div>
+
+              <div style={{ color: "#dbe4ff", lineHeight: 1.7, marginBottom: "18px", maxWidth: "980px" }}>
+                Use these controls to refresh persisted retrieval metadata and generate embeddings directly from the admin dashboard, without leaving the UI.
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "18px" }}>
+                <div style={{ ...softCardStyle, padding: "18px" }}>
+                  <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "12px" }}>Retrieval readiness</div>
+
+                  {retrievalReadinessLoading ? (
+                    <div style={{ color: "#dbe4ff" }}>Loading retrieval readiness...</div>
+                  ) : retrievalReadinessError ? (
+                    <div style={{ color: "#ffe1e1" }}>{retrievalReadinessError}</div>
+                  ) : retrievalReadiness ? (
+                    <div style={{ display: "grid", gap: "12px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px" }}>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Persisted records</div>
+                          <div style={{ fontSize: "24px", fontWeight: 800 }}>{retrievalReadiness.persisted_record_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Refresh needed</div>
+                          <div style={{ fontSize: "24px", fontWeight: 800 }}>{retrievalReadiness.refresh_needed_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Missing fingerprints</div>
+                          <div style={{ fontSize: "24px", fontWeight: 800 }}>{retrievalReadiness.missing_fingerprint_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Vector candidates</div>
+                          <div style={{ fontSize: "24px", fontWeight: 800 }}>{retrievalReadiness.vector_candidate_count}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => loadRetrievalReadiness()} style={secondaryButton} disabled={retrievalReadinessLoading}>
+                          Reload readiness
+                        </button>
+                        <button type="button" onClick={() => runRetrievalRefresh(false)} style={secondaryButton} disabled={retrievalRefreshLoading}>
+                          {retrievalRefreshLoading ? "Refreshing..." : "Refresh changed records"}
+                        </button>
+                        <button type="button" onClick={() => runRetrievalRefresh(true)} style={secondaryButton} disabled={retrievalRefreshLoading}>
+                          Force full refresh
+                        </button>
+                      </div>
+
+                      <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{retrievalReadiness.workflow_note}</div>
+                      {retrievalRefreshNote && <div style={{ color: "#b8f7d4" }}>{retrievalRefreshNote}</div>}
+
+                      <div style={{ display: "grid", gap: "10px" }}>
+                        {retrievalReadiness.sample_records.map((item) => (
+                          <div key={item.record_id} style={{ ...softCardStyle, padding: "14px" }}>
+                            <div style={{ fontWeight: 700, marginBottom: "6px" }}>
+                              {item.citation_label} · {item.law_name} {item.section_number}
+                            </div>
+                            <div style={{ color: "#aac0ff", fontSize: "13px", marginBottom: "8px" }}>
+                              Fingerprint: {item.fingerprint_status} · Retrieval doc: {item.has_retrieval_document ? "Yes" : "No"}
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                              <div style={badge(item.refresh_needed ? "green" : "blue")}>
+                                {item.refresh_needed ? "Refresh needed" : "Up to date"}
+                              </div>
+                              <div style={badge(item.has_retrieval_fingerprint ? "green" : "blue")}>
+                                {item.has_retrieval_fingerprint ? "Fingerprint ready" : "Fingerprint missing"}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={{ ...softCardStyle, padding: "18px" }}>
+                  <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "12px" }}>Embedding readiness</div>
+
+                  {embeddingReadinessLoading ? (
+                    <div style={{ color: "#dbe4ff" }}>Loading embedding readiness...</div>
+                  ) : embeddingReadinessError ? (
+                    <div style={{ color: "#ffe1e1" }}>{embeddingReadinessError}</div>
+                  ) : embeddingReadiness ? (
+                    <div style={{ display: "grid", gap: "12px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px" }}>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Ready vectors</div>
+                          <div style={{ fontSize: "24px", fontWeight: 800 }}>{embeddingReadiness.ready_vector_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Runnable</div>
+                          <div style={{ fontSize: "24px", fontWeight: 800 }}>{embeddingReadiness.runnable_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Vector rows</div>
+                          <div style={{ fontSize: "24px", fontWeight: 800 }}>{embeddingReadiness.vector_row_count}</div>
+                        </div>
+                        <div style={softCardStyle}>
+                          <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "6px" }}>Errors</div>
+                          <div style={{ fontSize: "24px", fontWeight: 800 }}>{embeddingReadiness.error_count}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                        <input
+                          type="number"
+                          min="1"
+                          value={embeddingRunLimit}
+                          onChange={(event) => setEmbeddingRunLimit(event.target.value)}
+                          style={{ ...fieldStyle, width: "110px" }}
+                        />
+                        <button type="button" onClick={() => loadEmbeddingReadiness()} style={secondaryButton} disabled={embeddingReadinessLoading}>
+                          Reload readiness
+                        </button>
+                        <button type="button" onClick={() => runEmbeddingGeneration()} style={secondaryButton} disabled={embeddingRunLoading}>
+                          {embeddingRunLoading ? "Running..." : "Run embedding batch"}
+                        </button>
+                      </div>
+
+                      <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>{embeddingReadiness.workflow_note}</div>
+                      {embeddingRunNote && <div style={{ color: "#b8f7d4" }}>{embeddingRunNote}</div>}
+
+                      <div style={{ display: "grid", gap: "10px" }}>
+                        {embeddingReadiness.sample_records.map((item) => (
+                          <div key={item.record_id} style={{ ...softCardStyle, padding: "14px" }}>
+                            <div style={{ fontWeight: 700, marginBottom: "6px" }}>
+                              {item.citation_label} · {item.law_name} {item.section_number}
+                            </div>
+                            <div style={{ color: "#aac0ff", fontSize: "13px", marginBottom: "8px" }}>
+                              Model: {item.model_name ?? "—"} · Dimensions: {item.dimensions ?? "—"}
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                              <div style={badge(item.has_vector ? "green" : "blue")}>
+                                {item.has_vector ? "Vector stored" : "Vector missing"}
+                              </div>
+                              <div style={badge(item.fingerprint_match ? "green" : "blue")}>
+                                {item.fingerprint_match ? "Fingerprint match" : "Fingerprint mismatch"}
+                              </div>
+                              {item.last_error && <div style={badge("pink")}>Has error</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </section>
 
             <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
