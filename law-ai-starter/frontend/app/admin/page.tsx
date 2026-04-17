@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   clearAdminToken,
   fetchAdminMe,
   getStoredAdminToken,
-  loginAdmin,
-  storeAdminToken,
+  roleAllowsAdminWrite,
   type AdminSessionUser,
 } from "@/lib/admin-auth";
 
@@ -655,13 +655,10 @@ function detailListCard(
 }
 
 export default function AdminPage() {
+  const router = useRouter();
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AdminSessionUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
-  const [authError, setAuthError] = useState("");
-  const [loginUsername, setLoginUsername] = useState("admin");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
   const [summary, setSummary] = useState<AdminSummaryResponse | null>(null);
   const [catalog, setCatalog] = useState<AdminSourceCatalogResponse | null>(null);
   const [detail, setDetail] = useState<AdminSourceDetailResponse | null>(null);
@@ -756,38 +753,52 @@ export default function AdminPage() {
       clearAdminToken();
       setAuthToken(null);
       setAuthUser(null);
-      setAuthError("Your admin session expired. Please sign in again.");
+      router.replace("/admin/login?next=/admin");
       throw new Error("Your admin session expired. Please sign in again.");
+    }
+
+    if (response.status === 403) {
+      let message = "You do not have permission to perform this admin action.";
+      try {
+        const payload = await response.clone().json();
+        if (payload && typeof payload.detail === "string" && payload.detail.trim()) {
+          message = payload.detail;
+        }
+      } catch {
+        // Ignore JSON parsing errors and keep the fallback message.
+      }
+      throw new Error(message);
     }
 
     return response;
   }
 
-  async function handleAdminLogin(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
+  async function readApiError(response: Response, fallback: string) {
     try {
-      setLoginLoading(true);
-      setAuthError("");
-      const result = await loginAdmin(loginUsername, loginPassword);
-      storeAdminToken(result.access_token);
-      setAuthToken(result.access_token);
-      setAuthUser(result.admin);
-      setLoginPassword("");
-    } catch (err) {
-      if (err instanceof Error) {
-        setAuthError(err.message || "Failed to sign in.");
+      const payload = await response.clone().json();
+      if (payload && typeof payload.detail === "string" && payload.detail.trim()) {
+        return payload.detail;
       }
-    } finally {
-      setLoginLoading(false);
-      setAuthChecking(false);
+    } catch {
+      // Ignore JSON parsing errors and fall back to text/status handling.
     }
+
+    try {
+      const text = (await response.text()).trim();
+      if (text) {
+        return text;
+      }
+    } catch {
+      // Ignore text read errors and use the fallback.
+    }
+
+    return `${fallback} (status ${response.status})`;
   }
 
   function handleAdminLogout() {
     clearAdminToken();
     setAuthToken(null);
     setAuthUser(null);
-    setAuthError("");
     setSummary(null);
     setCatalog(null);
     setDetail(null);
@@ -798,6 +809,15 @@ export default function AdminPage() {
     setEmbeddingReadiness(null);
     setSelectedSourceId("");
     setWorkspaceDraftId("");
+    router.replace("/admin/login?next=/admin");
+  }
+
+  function ensureWriteAccess(setter: (message: string) => void) {
+    if (canWriteAdmin) {
+      return true;
+    }
+    setter("Your current admin role is read-only for write actions.");
+    return false;
   }
 
   useEffect(() => {
@@ -819,13 +839,12 @@ export default function AdminPage() {
         }
         setAuthToken(storedToken);
         setAuthUser(result.admin);
-        setAuthError("");
       } catch (err) {
         clearAdminToken();
         if (!cancelled) {
           setAuthToken(null);
           setAuthUser(null);
-          setAuthError("Your previous admin session is no longer valid. Please sign in again.");
+          router.replace("/admin/login?next=/admin");
         }
       } finally {
         if (!cancelled) {
@@ -839,7 +858,7 @@ export default function AdminPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   async function loadAdminSnapshot(preferredSourceId?: string) {
     try {
@@ -995,6 +1014,9 @@ export default function AdminPage() {
   }
 
   async function runRetrievalRefresh(forceAll = false) {
+    if (!ensureWriteAccess(setRetrievalReadinessError)) {
+      return;
+    }
     try {
       setRetrievalRefreshLoading(true);
       setRetrievalRefreshNote("");
@@ -1005,7 +1027,7 @@ export default function AdminPage() {
         }),
       });
       if (!response.ok) {
-        throw new Error(`Retrieval refresh failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Retrieval refresh failed."));
       }
       const result: AdminRetrievalRefreshResponse = await response.json();
       setRetrievalRefreshNote(result.workflow_note);
@@ -1042,6 +1064,9 @@ export default function AdminPage() {
 
   async function runEmbeddingGeneration() {
     const parsedLimit = Math.max(1, Number.parseInt(embeddingRunLimit || "10", 10) || 10);
+    if (!ensureWriteAccess(setEmbeddingReadinessError)) {
+      return;
+    }
 
     try {
       setEmbeddingRunLoading(true);
@@ -1054,7 +1079,7 @@ export default function AdminPage() {
         }),
       });
       if (!response.ok) {
-        throw new Error(`Embedding run failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Embedding run failed."));
       }
       const result: AdminEmbeddingRunResponse = await response.json();
       setEmbeddingRunNote(result.workflow_note);
@@ -1072,6 +1097,9 @@ export default function AdminPage() {
     if (!selectedSourceId) {
       return;
     }
+    if (!ensureWriteAccess(setSelectedEmbeddingRunError)) {
+      return;
+    }
 
     try {
       setSelectedEmbeddingRunLoading(true);
@@ -1087,7 +1115,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Selected embedding run failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Selected embedding run failed."));
       }
 
       const result: AdminEmbeddingRunResponse = await response.json();
@@ -1237,7 +1265,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Draft validation failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Draft validation failed."));
       }
 
       const result: AdminSourceDraftValidationResponse = await response.json();
@@ -1266,7 +1294,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Draft review failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Draft review failed."));
       }
 
       const result: AdminSourceDraftReviewResponse = await response.json();
@@ -1295,7 +1323,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Publish preview failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Publish preview failed."));
       }
 
       const result: AdminSourcePublishPreviewResponse = await response.json();
@@ -1314,6 +1342,9 @@ export default function AdminPage() {
     if (!draftForm) {
       return;
     }
+    if (!ensureWriteAccess(setWorkspaceActionError)) {
+      return;
+    }
 
     try {
       setWorkspaceBusy(true);
@@ -1328,7 +1359,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Workspace draft save failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Workspace draft save failed."));
       }
 
       const result: AdminWorkspaceDraftDetailResponse = await response.json();
@@ -1382,6 +1413,9 @@ export default function AdminPage() {
     if (!draftForm) {
       return;
     }
+    if (!ensureWriteAccess(setWorkspaceActionError)) {
+      return;
+    }
 
     try {
       setWorkspaceBusy(true);
@@ -1396,7 +1430,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Publish package staging failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Publish package staging failed."));
       }
 
       await response.json();
@@ -1411,6 +1445,9 @@ export default function AdminPage() {
   }
 
   async function publishStagedPackage(packageId: string) {
+    if (!ensureWriteAccess(setWorkspaceActionError)) {
+      return;
+    }
     try {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
@@ -1420,8 +1457,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        const fallbackText = await response.text();
-        throw new Error(fallbackText || `Publish failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Publish failed."));
       }
 
       const result: AdminPublishExecutionResponse = await response.json();
@@ -1440,6 +1476,9 @@ export default function AdminPage() {
   }
 
   async function deleteWorkspaceDraft(workspaceId: string) {
+    if (!ensureWriteAccess(setWorkspaceActionError)) {
+      return;
+    }
     try {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
@@ -1449,7 +1488,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Workspace draft delete failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Workspace draft delete failed."));
       }
 
       if (workspaceDraftId === workspaceId) {
@@ -1466,6 +1505,9 @@ export default function AdminPage() {
   }
 
   async function deletePublishPackage(packageId: string) {
+    if (!ensureWriteAccess(setWorkspaceActionError)) {
+      return;
+    }
     try {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
@@ -1475,7 +1517,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Publish package delete failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Publish package delete failed."));
       }
 
       await loadWorkspace();
@@ -1525,6 +1567,9 @@ export default function AdminPage() {
   }
 
   async function saveCreateDraftToWorkspace() {
+    if (!ensureWriteAccess(setWorkspaceActionError)) {
+      return;
+    }
     try {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
@@ -1538,7 +1583,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Workspace draft save failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Workspace draft save failed."));
       }
 
       const result: AdminWorkspaceDraftDetailResponse = await response.json();
@@ -1557,6 +1602,9 @@ export default function AdminPage() {
   }
 
   async function saveIngestionCandidateToWorkspace(item: AdminIngestionPreviewResponse) {
+    if (!ensureWriteAccess(setWorkspaceActionError)) {
+      return;
+    }
     try {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
@@ -1570,7 +1618,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Workspace draft save failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Workspace draft save failed."));
       }
 
       await response.json();
@@ -1678,6 +1726,9 @@ export default function AdminPage() {
   }
 
   async function submitCreateRecord() {
+    if (!ensureWriteAccess(setCreateError)) {
+      return;
+    }
     try {
       setCreateLoading(true);
       setCreateError("");
@@ -1688,7 +1739,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Create source request failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Create source request failed."));
       }
 
       const result: AdminSourceCreateResponse = await response.json();
@@ -1717,6 +1768,9 @@ export default function AdminPage() {
     if (!draftForm || !selectedSourceId) {
       return;
     }
+    if (!ensureWriteAccess(setPersistUpdateError)) {
+      return;
+    }
 
     try {
       setPersistUpdateLoading(true);
@@ -1728,7 +1782,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Persisted update failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Persisted update failed."));
       }
 
       const result: AdminSourceUpdateResponse = await response.json();
@@ -1756,6 +1810,9 @@ export default function AdminPage() {
     if (!selectedSourceId) {
       return;
     }
+    if (!ensureWriteAccess(setDeleteError)) {
+      return;
+    }
 
     const confirmation = window.confirm("Delete this legal source record from the active store?");
     if (!confirmation) {
@@ -1771,7 +1828,7 @@ export default function AdminPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Delete request failed with status ${response.status}`);
+        throw new Error(await readApiError(response, "Delete request failed."));
       }
 
       const result: AdminSourceDeleteResponse = await response.json();
@@ -1847,6 +1904,7 @@ export default function AdminPage() {
   const filteredLawCount = new Set(filteredItems.map((item) => item.law_name)).size;
 
   const selectedRecordVisible = filteredItems.some((item) => item.id === selectedSourceId);
+  const canWriteAdmin = roleAllowsAdminWrite(authUser?.role);
 
   if (authChecking) {
     return (
@@ -1865,53 +1923,7 @@ export default function AdminPage() {
       <main style={pageWrap}>
         <div style={containerStyle}>
           <div style={{ ...cardStyle, padding: "32px", maxWidth: "560px", margin: "80px auto 0" }}>
-            <div style={{ ...badge(), marginBottom: "12px" }}>Admin authentication required</div>
-            <h1 style={{ fontSize: "38px", lineHeight: 1.1, margin: "0 0 12px" }}>Admin Login</h1>
-            <p style={{ margin: "0 0 24px", color: "#c8d6f7", lineHeight: 1.7 }}>
-              Sign in to access the protected admin workspace. Public pages remain unchanged and do not require authentication.
-            </p>
-
-            <form onSubmit={handleAdminLogin} style={{ display: "grid", gap: "16px" }}>
-              <div>
-                <div style={{ color: "#dfe7ff", fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Username</div>
-                <input
-                  type="text"
-                  value={loginUsername}
-                  onChange={(event) => setLoginUsername(event.target.value)}
-                  style={fieldStyle}
-                  autoComplete="username"
-                />
-              </div>
-              <div>
-                <div style={{ color: "#dfe7ff", fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Password</div>
-                <input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(event) => setLoginPassword(event.target.value)}
-                  style={fieldStyle}
-                  autoComplete="current-password"
-                />
-              </div>
-
-              {authError && (
-                <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
-                  {authError}
-                </div>
-              )}
-
-              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "4px" }}>
-                <button
-                  type="submit"
-                  style={{ ...secondaryButton, background: "#dfe7ff", color: "#071226", border: "none" }}
-                  disabled={loginLoading}
-                >
-                  {loginLoading ? "Signing in..." : "Sign In"}
-                </button>
-                <Link href="/" style={secondaryButton}>
-                  Back to Homepage
-                </Link>
-              </div>
-            </form>
+            Redirecting to admin login...
           </div>
         </div>
       </main>
@@ -1963,6 +1975,9 @@ export default function AdminPage() {
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ ...badge("green") }}>
               Signed in as {authUser.display_name}
+            </div>
+            <div style={{ ...badge(canWriteAdmin ? "green" : "pink") }}>
+              {canWriteAdmin ? "Write access enabled" : `Read-only role: ${authUser.role}`}
             </div>
             <Link href="/" style={secondaryButton}>
               Back to Homepage

@@ -28,15 +28,31 @@ class Settings(BaseSettings):
     admin_auth_issuer: str = "law-ai-admin"
     admin_auth_username: str = "admin"
     admin_auth_display_name: str = "Admin"
+    admin_auth_role: str = "admin"
     admin_auth_password: str = "admin123"
     admin_auth_password_sha256: str | None = None
     admin_auth_access_token_ttl_minutes: int = 480
+    admin_auth_write_roles: list[str] = ["admin"]
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def parse_allowed_origins(cls, value):
+        if isinstance(value, str):
+            cleaned = value.strip()
+
+            if cleaned.startswith("[") and cleaned.endswith("]"):
+                cleaned = cleaned[1:-1]
+
+            parts = [item.strip().strip('"').strip("'") for item in cleaned.split(",")]
+            return [item for item in parts if item]
+
+        return value
+
+    @field_validator("admin_auth_write_roles", mode="before")
+    @classmethod
+    def parse_admin_write_roles(cls, value):
         if isinstance(value, str):
             cleaned = value.strip()
 

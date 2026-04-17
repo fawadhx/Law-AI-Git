@@ -63,6 +63,11 @@ from app.services.legal_source_embedding_service import (
     get_embedding_store_snapshot,
     run_embedding_generation,
 )
+from app.services.admin_audit_service import (
+    count_admin_audit_events,
+    list_admin_audit_events,
+    write_admin_audit_event,
+)
 from app.services.legal_retrieval_service import get_retrieval_probe
 
 
@@ -1593,7 +1598,6 @@ from app.schemas.admin import (
 
 WORKSPACE_DRAFT_STORE: dict[str, dict] = {}
 PUBLISH_PACKAGE_STORE: dict[str, dict] = {}
-ACTIVITY_FEED_STORE: list[AdminActivityRecord] = []
 
 
 def _utc_now_iso() -> str:
@@ -1678,7 +1682,7 @@ def get_admin_workspace() -> AdminWorkspaceResponse:
         staged_publish_count=len(publish_queue),
         ready_draft_count=ready_draft_count,
         blocked_item_count=blocked_item_count,
-        session_publish_count=sum(1 for item in ACTIVITY_FEED_STORE if item.kind == "publish"),
+        session_publish_count=count_admin_audit_events(kind="publish"),
         drafts=drafts,
         publish_queue=publish_queue,
         workflow_note=(
@@ -1747,8 +1751,15 @@ def build_admin_workspace_publish_package(request: AdminWorkspaceStageRequest) -
     publish_preview = build_admin_source_publish_preview(normalized)
     validation = validate_admin_source_draft(normalized)
 
+    if validation.error_count > 0 or review.review_status == "blocked" or publish_preview.publish_status == "blocked":
+        raise ValueError(
+            "This draft still has validation or review blockers and cannot be staged for publish."
+        )
+
     workspace_draft_id = request.workspace_draft_id
     linked_entry = WORKSPACE_DRAFT_STORE.get(workspace_draft_id) if workspace_draft_id else None
+    if workspace_draft_id and linked_entry is None:
+        raise ValueError("The selected workspace draft does not exist anymore, so it cannot be staged.")
     title = linked_entry["workspace_draft"].title if linked_entry else _title_from_draft(normalized)
 
     package = AdminPublishQueueRecord(
@@ -1786,31 +1797,27 @@ def delete_admin_workspace_publish_package(package_id: str) -> bool:
 
 
 def _log_activity(*, kind: str, title: str, detail: str, status: str, citation_label: str | None = None, record_id: str | None = None) -> AdminActivityRecord:
-    activity = AdminActivityRecord(
-        activity_id=str(uuid4()),
+    return write_admin_audit_event(
         kind=kind,
         title=title,
         detail=detail,
         status=status,
         citation_label=citation_label,
         record_id=record_id,
-        created_at=_utc_now_iso(),
     )
-    ACTIVITY_FEED_STORE.insert(0, activity)
-    del ACTIVITY_FEED_STORE[24:]
-    return activity
 
 
 def get_admin_activity_feed() -> AdminActivityFeedResponse:
-    latest_publish = next((item for item in ACTIVITY_FEED_STORE if item.kind == "publish"), None)
+    items = list_admin_audit_events(limit=50)
+    latest_publish = next((item for item in items if item.kind == "publish"), None)
     return AdminActivityFeedResponse(
-        total_events=len(ACTIVITY_FEED_STORE),
-        publish_event_count=sum(1 for item in ACTIVITY_FEED_STORE if item.kind == "publish"),
+        total_events=count_admin_audit_events(),
+        publish_event_count=count_admin_audit_events(kind="publish"),
         latest_publish_label=latest_publish.citation_label if latest_publish else None,
-        items=list(ACTIVITY_FEED_STORE),
+        items=items,
         workflow_note=(
-            "This activity feed is session-only and now shows prototype publish actions plus create, update, and delete changes performed during the current server run. "
-            "It is helpful for testing, but it is not a real audit log yet."
+            "This activity feed now reads from the admin audit foundation when database persistence is available, with an in-memory fallback for local prototype mode. "
+            "It captures key admin actions such as login, draft validation, workspace staging, source changes, publish actions, and related control events."
         ),
     )
 
@@ -1954,6 +1961,20 @@ def publish_admin_workspace_package(package_id: str) -> AdminPublishExecutionRes
     package = package_entry["publish_package"]
     if package.publish_status == "blocked" or package.blocker_count > 0:
         raise ValueError("This staged package still has blockers and cannot be published into the live session catalog.")
+    if package.review_status != "ready":
+        raise ValueError("This staged package must be fully review-ready before publish is allowed.")
+    if package.publish_status != "preview_ready":
+        raise ValueError("This staged package does not have a clean publish preview state yet.")
+    if package.publish_mode == "update_existing_record" and not package.target_record_id:
+        raise ValueError("This update package is missing its target record id and cannot be published safely.")
+    if package.publish_mode == "update_existing_record":
+        target_exists = _record_index(_active_records()).get(package.target_record_id or "")
+        if target_exists is None:
+            raise ValueError("The target live record for this update package no longer exists.")
+    if package.changed_field_count <= 0:
+        raise ValueError("Publishing without any changed fields is blocked to avoid no-op live mutations.")
+    if package.workspace_draft_id and package.workspace_draft_id not in WORKSPACE_DRAFT_STORE:
+        raise ValueError("The linked workspace draft is no longer available, so this package cannot be published safely.")
 
     payload: AdminSourceDraftInput = _normalize_draft(package_entry["payload"])
     target_record_id = package.target_record_id if package.publish_mode == "update_existing_record" else None

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.deps.admin_auth import require_admin_auth
+from app.api.deps.admin_auth import require_admin_auth, require_admin_write_access
 from app.schemas.legal_corpus import (
     LegalCorpusBootstrapResponse,
     LegalCorpusFoundationResponse,
@@ -26,7 +26,9 @@ def admin_legal_corpus_instruments() -> LegalCorpusInstrumentCatalogResponse:
 
 
 @router.post("/admin/legal-corpus/bootstrap-federal-seeds", response_model=LegalCorpusBootstrapResponse)
-def admin_bootstrap_federal_seed_metadata() -> LegalCorpusBootstrapResponse:
+def admin_bootstrap_federal_seed_metadata(
+    _: object = Depends(require_admin_write_access),
+) -> LegalCorpusBootstrapResponse:
     result = bootstrap_federal_seed_metadata()
     return LegalCorpusBootstrapResponse(
         status="ok",

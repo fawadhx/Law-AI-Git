@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.data.legal_sources import LEGAL_SOURCES
 from app.db.base import Base
 from app.db.models import (
+    AdminAuditEventORM,
     IngestionRunORM,
     LegalInstrumentORM,
     LegalInstrumentVersionORM,

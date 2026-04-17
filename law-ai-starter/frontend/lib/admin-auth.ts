@@ -1,5 +1,6 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 const ADMIN_TOKEN_KEY = "law-ai-admin-access-token";
+const ADMIN_TOKEN_COOKIE = "law_ai_admin_token";
 
 export type AdminSessionUser = {
   username: string;
@@ -63,6 +64,7 @@ export function storeAdminToken(token: string) {
     return;
   }
   window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  document.cookie = `${ADMIN_TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
 }
 
 export function clearAdminToken() {
@@ -70,4 +72,9 @@ export function clearAdminToken() {
     return;
   }
   window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+  document.cookie = `${ADMIN_TOKEN_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+export function roleAllowsAdminWrite(role: string | null | undefined) {
+  return role === "admin";
 }

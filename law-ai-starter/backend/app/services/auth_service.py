@@ -96,7 +96,7 @@ def authenticate_admin_credentials(username: str, password: str) -> AdminSession
     return AdminSessionUser(
         username=settings.admin_auth_username,
         display_name=settings.admin_auth_display_name,
-        role="admin",
+        role=settings.admin_auth_role,
     )
 
 
@@ -120,5 +120,5 @@ def get_admin_user_from_token(token: str) -> AdminSessionUser:
     return AdminSessionUser(
         username=str(payload.get("username") or payload.get("sub") or settings.admin_auth_username),
         display_name=str(payload.get("display_name") or settings.admin_auth_display_name),
-        role="admin",
+        role=str(payload.get("role") or settings.admin_auth_role),
     )
