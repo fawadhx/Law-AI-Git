@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 
@@ -7,158 +7,119 @@ export const metadata: Metadata = {
   description: "Legal information platform prototype",
 };
 
-const navContainerStyle: React.CSSProperties = {
-  maxWidth: "1280px",
-  margin: "0 auto",
-  padding: "0 28px",
-};
-
-const navLinkStyle: React.CSSProperties = {
-  color: "#dfe7ff",
-  textDecoration: "none",
-  fontSize: "15px",
-  fontWeight: 600,
-  padding: "10px 14px",
-  borderRadius: "12px",
-};
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>
-        <div
-          style={{
-            minHeight: "100vh",
-            background:
-              "radial-gradient(circle at top, rgba(45,78,180,0.12), transparent 22%), linear-gradient(180deg, #061120 0%, #09152b 100%)",
-            color: "#f4f7ff",
-          }}
-        >
-          <header
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 50,
-              backdropFilter: "blur(16px)",
-              background: "rgba(5, 10, 24, 0.78)",
-              borderBottom: "1px solid rgba(120, 150, 255, 0.10)",
-            }}
-          >
-            <div
-              style={{
-                ...navContainerStyle,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "20px",
-                minHeight: "78px",
-                flexWrap: "wrap",
-              }}
-            >
-              <Link
-                href="/"
-                style={{
-                  textDecoration: "none",
-                  color: "#ffffff",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "14px",
-                    background:
-                      "linear-gradient(180deg, rgba(126,162,255,0.95), rgba(77,118,255,0.88))",
-                    color: "#081227",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 800,
-                    fontSize: "16px",
-                    boxShadow: "0 10px 24px rgba(53, 94, 217, 0.28)",
-                  }}
-                >
-                  LA
-                </div>
+    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <div className="app-shell">
+          <header className="site-header">
+            <div className="shell-container header-inner">
+              <Link href="/" className="brand-link">
+                <div className="brand-badge">LA</div>
 
-                <div>
-                  <div
-                    style={{
-                      fontSize: "20px",
-                      fontWeight: 800,
-                      lineHeight: 1.1,
-                      letterSpacing: "-0.4px",
-                    }}
-                  >
-                    Law AI
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#aebee9",
-                      marginTop: "2px",
-                    }}
-                  >
-                    Legal information platform
+                <div className="brand-copy">
+                  <div className="brand-title">
+                    LawBridge <span className="brand-accent">AI</span>
                   </div>
                 </div>
               </Link>
 
-              <nav
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  flexWrap: "wrap",
-                }}
-              >
-                <Link href="/" style={navLinkStyle}>
-                  Home
+              <nav className="top-nav">
+                <Link href="/#rights" className="nav-link">
+                  Know Your Rights
                 </Link>
-                <Link href="/chat" style={navLinkStyle}>
-                  Chat
-                </Link>
-                <Link href="/officer-authority" style={navLinkStyle}>
+                <Link href="/officer-authority" className="nav-link">
                   Officer Authority
                 </Link>
-                <Link href="/admin" style={navLinkStyle}>
-                  Admin
+                <Link href="/admin" className="nav-link">
+                  Source Library
+                </Link>
+                <Link href="/admin" className="nav-link">
+                  Pricing
                 </Link>
               </nav>
+
+              <div className="header-actions">
+                <Link href="/chat" className="header-login">
+                  Log In
+                </Link>
+                <Link href="/chat" className="header-cta">
+                  Get Started
+                </Link>
+              </div>
             </div>
           </header>
 
-          <div>{children}</div>
+          <main className="site-main">{children}</main>
 
-          <footer
-            style={{
-              borderTop: "1px solid rgba(120, 150, 255, 0.10)",
-              marginTop: "20px",
-            }}
-          >
-            <div
-              style={{
-                ...navContainerStyle,
-                paddingTop: "20px",
-                paddingBottom: "24px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "14px",
-                flexWrap: "wrap",
-                color: "#aebee9",
-                fontSize: "14px",
-              }}
-            >
-              <div>Law AI prototype for legal information and awareness.</div>
-              <div>This product should not be treated as legal advice.</div>
+          <footer className="site-footer">
+            <div className="shell-container footer-inner">
+              <div className="footer-brand-block">
+                <div className="footer-brand-row">
+                  <div className="footer-badge">LA</div>
+                  <div className="footer-brand-title">LawBridge AI</div>
+                </div>
+                <p className="footer-brand-copy">
+                  The world&apos;s first authoritative legal-information platform for public
+                  transparency and literacy.
+                </p>
+                <div className="footer-icon-row">
+                  <span className="footer-icon">G</span>
+                  <span className="footer-icon">C</span>
+                </div>
+              </div>
+
+              <div className="footer-column">
+                <div className="footer-heading">Product</div>
+                <Link href="/#rights" className="footer-link">
+                  Know Your Rights
+                </Link>
+                <Link href="/officer-authority" className="footer-link">
+                  Officer Authority
+                </Link>
+                <Link href="/admin" className="footer-link">
+                  Statute Library
+                </Link>
+                <Link href="/chat" className="footer-link">
+                  AI Research Assistant
+                </Link>
+              </div>
+
+              <div className="footer-column">
+                <div className="footer-heading">Resources</div>
+                <Link href="/admin" className="footer-link">
+                  Documentation
+                </Link>
+                <Link href="/chat" className="footer-link">
+                  Legal Glossary
+                </Link>
+                <Link href="/chat" className="footer-link">
+                  Community Forum
+                </Link>
+                <Link href="/admin" className="footer-link">
+                  Public API
+                </Link>
+              </div>
+
+              <div className="footer-column">
+                <div className="footer-heading">Legal</div>
+                <Link href="/chat" className="footer-link">
+                  Privacy Policy
+                </Link>
+                <Link href="/chat" className="footer-link">
+                  Terms of Service
+                </Link>
+                <Link href="/chat" className="footer-link">
+                  Information Disclaimer
+                </Link>
+                <Link href="/chat" className="footer-link">
+                  Cookie Policy
+                </Link>
+              </div>
             </div>
           </footer>
         </div>
@@ -166,3 +127,4 @@ export default function RootLayout({
     </html>
   );
 }
+

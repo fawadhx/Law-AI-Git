@@ -1470,6 +1470,38 @@ export default function AdminPage() {
     }
   }
 
+  async function saveIngestionCandidateToWorkspace(item: AdminIngestionPreviewResponse) {
+    try {
+      setWorkspaceBusy(true);
+      setWorkspaceActionError("");
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          label: item.draft.citation_label || item.draft.section_title || "Ingestion candidate",
+          draft: draftFormToPayload(item.draft),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Workspace draft save failed with status ${response.status}`);
+      }
+
+      await response.json();
+      setCreateTemplateNote("Saved the selected ingestion candidate to the workspace shelf.");
+      await loadWorkspace();
+    } catch (err) {
+      if (err instanceof Error) {
+        setWorkspaceActionError(err.message || "Failed to save ingestion candidate to workspace.");
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  }
+
   async function runIngestionPreview() {
     if (!ingestionRawText.trim()) {
       setIngestionError("Paste legal source text first, then run ingestion preview.");
@@ -2183,9 +2215,12 @@ export default function AdminPage() {
                             <div style={chipStyle}>Group: {item.draft.offence_group || "—"}</div>
                             <div style={chipStyle}>Related: {item.draft.related_sections_text || "—"}</div>
                           </div>
-                          <div>
+                          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                             <button type="button" onClick={() => loadIngestionCandidateIntoCreateForm(item)} style={secondaryButton}>
                               Load candidate into create form
+                            </button>
+                            <button type="button" onClick={() => saveIngestionCandidateToWorkspace(item)} style={secondaryButton} disabled={workspaceBusy}>
+                              {workspaceBusy ? "Saving..." : "Save candidate to workspace"}
                             </button>
                           </div>
                         </div>
@@ -2222,6 +2257,15 @@ export default function AdminPage() {
                         <strong style={{ color: "#ffffff" }}>Punishment hint:</strong> {ingestionPreview.draft.punishment_summary}
                       </div>
                     )}
+
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => loadIngestionCandidateIntoCreateForm(ingestionPreview)} style={secondaryButton}>
+                        Load into create form
+                      </button>
+                      <button type="button" onClick={() => saveIngestionCandidateToWorkspace(ingestionPreview)} style={secondaryButton} disabled={workspaceBusy}>
+                        {workspaceBusy ? "Saving..." : "Save preview to workspace"}
+                      </button>
+                    </div>
 
                     {ingestionPreview.duplicate_candidates.length > 0 && (
                       <div style={{ ...softCardStyle, display: "grid", gap: "12px", border: "1px solid rgba(255, 184, 77, 0.25)" }}>
