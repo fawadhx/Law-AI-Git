@@ -1,30 +1,20 @@
 ﻿import Link from "next/link";
 import styles from "./page.module.css";
 
-const trendingTopics = [
-  "Traffic Stop Rights",
-  "Public Records Access",
-  "Tenant Protections",
-];
-
 const rightsCards = [
   {
-    icon: "PI",
     title: "Police Interactions",
     text: "Verified information on your rights during stops, searches, and detentions.",
   },
   {
-    icon: "HT",
     title: "Housing & Tenancy",
     text: "Essential information on eviction processes, security deposits, and habitability laws.",
   },
   {
-    icon: "CR",
     title: "Consumer Rights",
     text: "Understanding warranties, refund policies, and protection against deceptive practices.",
   },
   {
-    icon: "EL",
     title: "Employment Law",
     text: "Workplace safety, wage theft, discrimination, and fair labor standard information.",
   },
@@ -61,48 +51,53 @@ export default function HomePage() {
 
       <section className={styles.heroSection}>
         <div className={styles.shell}>
-          <div className={styles.heroFrame}>
-            <div className={styles.heroGrid}>
-              <div className={styles.heroLeft}>
-                <div className={styles.heroPill}>Empowering legal literacy</div>
-                <h1>Legal Transparency for Every Citizen.</h1>
-                <p className={styles.heroBody}>
-                  Access verified legal information, understand officer authorities, and
-                  navigate the law with confidence. LawBridge AI bridges the gap between
-                  complex statutes and public understanding.
-                </p>
+          <div className={styles.heroGrid}>
+            <div className={styles.heroCopy}>
+              <div className={styles.heroPill}>Empowering legal literacy</div>
+              <h1>Legal Transparency for Every Citizen.</h1>
+              <p className={styles.heroBody}>
+                Access verified legal information, understand officer authorities, and navigate
+                the law with confidence. Law AI helps bridge the gap between complex statutes
+                and public understanding.
+              </p>
 
-                <form action="/chat" className={styles.searchBar}>
-                  <span className={styles.searchIcon}>Q</span>
-                  <input
-                    name="q"
-                    type="text"
-                    placeholder="Ask about rights, police powers, or specific laws..."
-                  />
-                  <button type="submit">Search</button>
-                </form>
+              <div className={styles.heroActions}>
+                <Link href="/chat" className={styles.primaryLink}>
+                  Open Legal Chat
+                </Link>
+                <Link href="/admin" className={styles.secondaryLink}>
+                  View Admin Prototype
+                </Link>
+              </div>
+            </div>
 
-                <div className={styles.trendingRow}>
-                  <span className={styles.trendingLabel}>Trending:</span>
-                  <div className={styles.trendingPills}>
-                    {trendingTopics.map((item) => (
-                      <Link key={item} href="/chat" className={styles.topicPill}>
-                        {item}
-                      </Link>
-                    ))}
+            <div className={styles.heroPanel}>
+              <div className={styles.visualCard}>
+                <div className={styles.visualCardLabel}>Live authority search</div>
+                <div className={styles.visualResultCard}>
+                  <div className={styles.visualResultHead}>
+                    <span>Officer Authority: Detainment</span>
+                    <span className={styles.verifiedTag}>Verified</span>
+                  </div>
+                  <p>Does an officer have the right to detain you without reasonable suspicion?</p>
+                  <div className={styles.visualResultGrid}>
+                    <div className={styles.answerBox}>
+                      <strong>No</strong>
+                      <span>Requires articulable facts of criminal activity.</span>
+                    </div>
+                    <div className={styles.basisBox}>
+                      <strong>Legal Basis</strong>
+                      <span>Terry v. Ohio, 392 U.S. 1 (1968)</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div className={styles.heroVisual}>
-                <div className={styles.visualWindow} />
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="rights" className={styles.section}>
+      <section className={styles.section}>
         <div className={styles.shell}>
           <div className={styles.sectionHead}>
             <div>
@@ -118,10 +113,10 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className={styles.cardGrid}>
+          <div className={styles.rightsGrid}>
             {rightsCards.map((item) => (
-              <article key={item.title} className={styles.infoCard}>
-                <div className={styles.cardIcon}>{item.icon}</div>
+              <article key={item.title} className={styles.rightCard}>
+                <div className={styles.cardIcon}>{item.title.slice(0, 2)}</div>
                 <h3>{item.title}</h3>
                 <p>{item.text}</p>
               </article>
@@ -130,9 +125,9 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className={styles.trustSection}>
+      <section className={styles.section}>
         <div className={styles.shell}>
-          <div className={styles.trustGrid}>
+          <div className={styles.trustSection}>
             <div className={styles.trustCopy}>
               <h2>Government-Grade Trust, Modern Accessibility.</h2>
               <p className={styles.trustLead}>
@@ -144,7 +139,7 @@ export default function HomePage() {
               <div className={styles.trustList}>
                 {trustPoints.map((item) => (
                   <div key={item.title} className={styles.trustItem}>
-                    <div className={styles.checkCircle}>OK</div>
+                    <div className={styles.trustCheck}>OK</div>
                     <div>
                       <div className={styles.trustItemTitle}>{item.title}</div>
                       <div className={styles.trustItemText}>{item.text}</div>
@@ -154,41 +149,58 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className={styles.authorityPanel}>
-              <div className={styles.panelChrome}>
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className={styles.panelTitle}>Live Authority Search</div>
-
-              <div className={styles.authorityCard}>
-                <div className={styles.authorityHeader}>
-                  <div>Officer Authority: Detainment</div>
-                  <span>Verified</span>
-                </div>
-                <p>Does an officer have the right to detain you without reasonable suspicion?</p>
-
-                <div className={styles.authorityMeta}>
-                  <div className={styles.answerBlock}>
-                    <strong>No</strong>
-                    <span>Requires articulable facts of criminal activity.</span>
+            <div className={styles.heroPanel}>
+              <div className={styles.visualCard}>
+                <div className={styles.visualCardLabel}>Live authority search</div>
+                <div className={styles.visualResultCard}>
+                  <div className={styles.visualResultHead}>
+                    <span>Officer Authority: Detainment</span>
+                    <span className={styles.verifiedTag}>Verified</span>
                   </div>
-                  <div className={styles.basisBlock}>
-                    <strong>Legal Basis</strong>
-                    <span>Terry v. Ohio, 392 U.S. 1 (1968)</span>
+                  <p>Does an officer have the right to detain you without reasonable suspicion?</p>
+                  <div className={styles.visualResultGrid}>
+                    <div className={styles.answerBox}>
+                      <strong>No</strong>
+                      <span>Requires articulable facts of criminal activity.</span>
+                    </div>
+                    <div className={styles.basisBox}>
+                      <strong>Legal Basis</strong>
+                      <span>Terry v. Ohio, 392 U.S. 1 (1968)</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className={styles.referenceCard}>
-                <div className={styles.referenceHeader}>
-                  <span>Officer Authority: Search</span>
-                  <em>Reference</em>
+                <div className={styles.referenceCard}>
+                  <div className={styles.referenceRow}>
+                    <span>Officer Authority: Search</span>
+                    <span className={styles.referenceTag}>Reference</span>
+                  </div>
+                  <div className={styles.referenceLine} />
+                  <div className={`${styles.referenceLine} ${styles.referenceLineShort}`} />
                 </div>
-                <div className={styles.referenceLine} />
-                <div className={`${styles.referenceLine} ${styles.referenceLineShort}`} />
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.closingSection}>
+        <div className={styles.shell}>
+          <div className={styles.boundaryCard}>
+            <h2>Important legal boundary</h2>
+            <p>
+              This product is intended for legal information, public awareness, and structured
+              law exploration. It should not claim to replace a licensed lawyer, court filing
+              strategy, or professional legal representation.
+            </p>
+
+            <div className={styles.heroActions}>
+              <Link href="/chat" className={styles.primaryLink}>
+                Continue to Chat
+              </Link>
+              <Link href="/officer-authority" className={styles.secondaryLink}>
+                Explore Officer Authority
+              </Link>
             </div>
           </div>
         </div>
