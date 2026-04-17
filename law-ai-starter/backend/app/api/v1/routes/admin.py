@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.deps.admin_auth import require_admin_auth
 from app.schemas.admin import (
     AdminPublishExecutionResponse,
     AdminPublishQueueRecord,
@@ -58,7 +59,7 @@ from app.services.admin_service import (
     validate_admin_source_draft,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_auth)])
 
 
 @router.get("/admin/summary", response_model=AdminSummaryResponse)

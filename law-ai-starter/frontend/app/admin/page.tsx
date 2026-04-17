@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  clearAdminToken,
+  fetchAdminMe,
+  getStoredAdminToken,
+  loginAdmin,
+  storeAdminToken,
+  type AdminSessionUser,
+} from "@/lib/admin-auth";
 
 type AdminStat = {
   value: string;
@@ -647,6 +655,13 @@ function detailListCard(
 }
 
 export default function AdminPage() {
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<AdminSessionUser | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authError, setAuthError] = useState("");
+  const [loginUsername, setLoginUsername] = useState("admin");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [summary, setSummary] = useState<AdminSummaryResponse | null>(null);
   const [catalog, setCatalog] = useState<AdminSourceCatalogResponse | null>(null);
   const [detail, setDetail] = useState<AdminSourceDetailResponse | null>(null);
@@ -720,19 +735,123 @@ export default function AdminPage() {
   const [selectedEmbeddingRunNote, setSelectedEmbeddingRunNote] = useState("");
   const [selectedEmbeddingRunError, setSelectedEmbeddingRunError] = useState("");
 
+  async function adminFetch(path: string, init: RequestInit = {}) {
+    if (!authToken) {
+      throw new Error("Admin session not found. Please sign in again.");
+    }
+
+    const headers = new Headers(init.headers || {});
+    headers.set("Authorization", `Bearer ${authToken}`);
+    if (init.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers,
+      cache: init.cache ?? "no-store",
+    });
+
+    if (response.status === 401) {
+      clearAdminToken();
+      setAuthToken(null);
+      setAuthUser(null);
+      setAuthError("Your admin session expired. Please sign in again.");
+      throw new Error("Your admin session expired. Please sign in again.");
+    }
+
+    return response;
+  }
+
+  async function handleAdminLogin(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    try {
+      setLoginLoading(true);
+      setAuthError("");
+      const result = await loginAdmin(loginUsername, loginPassword);
+      storeAdminToken(result.access_token);
+      setAuthToken(result.access_token);
+      setAuthUser(result.admin);
+      setLoginPassword("");
+    } catch (err) {
+      if (err instanceof Error) {
+        setAuthError(err.message || "Failed to sign in.");
+      }
+    } finally {
+      setLoginLoading(false);
+      setAuthChecking(false);
+    }
+  }
+
+  function handleAdminLogout() {
+    clearAdminToken();
+    setAuthToken(null);
+    setAuthUser(null);
+    setAuthError("");
+    setSummary(null);
+    setCatalog(null);
+    setDetail(null);
+    setWorkspace(null);
+    setActivity(null);
+    setProbeResult(null);
+    setRetrievalReadiness(null);
+    setEmbeddingReadiness(null);
+    setSelectedSourceId("");
+    setWorkspaceDraftId("");
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function restoreAdminSession() {
+      const storedToken = getStoredAdminToken();
+      if (!storedToken) {
+        if (!cancelled) {
+          setAuthChecking(false);
+        }
+        return;
+      }
+
+      try {
+        const result = await fetchAdminMe(storedToken);
+        if (cancelled) {
+          return;
+        }
+        setAuthToken(storedToken);
+        setAuthUser(result.admin);
+        setAuthError("");
+      } catch (err) {
+        clearAdminToken();
+        if (!cancelled) {
+          setAuthToken(null);
+          setAuthUser(null);
+          setAuthError("Your previous admin session is no longer valid. Please sign in again.");
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthChecking(false);
+        }
+      }
+    }
+
+    restoreAdminSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function loadAdminSnapshot(preferredSourceId?: string) {
     try {
       setLoading(true);
       setError("");
 
       const [summaryResponse, sourcesResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/v1/admin/summary`, {
+        adminFetch(`/api/v1/admin/summary`, {
           method: "GET",
-          cache: "no-store",
         }),
-        fetch(`${API_BASE_URL}/api/v1/admin/sources`, {
+        adminFetch(`/api/v1/admin/sources`, {
           method: "GET",
-          cache: "no-store",
         }),
       ]);
 
@@ -782,9 +901,8 @@ export default function AdminPage() {
     try {
       setWorkspaceLoading(true);
       setWorkspaceError("");
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace`, {
+      const response = await adminFetch(`/api/v1/admin/workspace`, {
         method: "GET",
-        cache: "no-store",
       });
       if (!response.ok) {
         throw new Error(`Workspace request failed with status ${response.status}`);
@@ -804,9 +922,8 @@ export default function AdminPage() {
     try {
       setActivityLoading(true);
       setActivityError("");
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/activity`, {
+      const response = await adminFetch(`/api/v1/admin/activity`, {
         method: "GET",
-        cache: "no-store",
       });
       if (!response.ok) {
         throw new Error(`Activity request failed with status ${response.status}`);
@@ -833,11 +950,8 @@ export default function AdminPage() {
       setProbeLoading(true);
       setProbeError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/retrieval-probe`, {
+      const response = await adminFetch(`/api/v1/admin/retrieval-probe`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           query,
           limit: 6,
@@ -863,9 +977,8 @@ export default function AdminPage() {
     try {
       setRetrievalReadinessLoading(true);
       setRetrievalReadinessError("");
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/retrieval-readiness`, {
+      const response = await adminFetch(`/api/v1/admin/retrieval-readiness`, {
         method: "GET",
-        cache: "no-store",
       });
       if (!response.ok) {
         throw new Error(`Retrieval readiness failed with status ${response.status}`);
@@ -885,11 +998,8 @@ export default function AdminPage() {
     try {
       setRetrievalRefreshLoading(true);
       setRetrievalRefreshNote("");
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/retrieval-readiness/refresh`, {
+      const response = await adminFetch(`/api/v1/admin/retrieval-readiness/refresh`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           force_all: forceAll,
         }),
@@ -913,9 +1023,8 @@ export default function AdminPage() {
     try {
       setEmbeddingReadinessLoading(true);
       setEmbeddingReadinessError("");
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/embedding-readiness`, {
+      const response = await adminFetch(`/api/v1/admin/embedding-readiness`, {
         method: "GET",
-        cache: "no-store",
       });
       if (!response.ok) {
         throw new Error(`Embedding readiness failed with status ${response.status}`);
@@ -937,11 +1046,8 @@ export default function AdminPage() {
     try {
       setEmbeddingRunLoading(true);
       setEmbeddingRunNote("");
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/embedding-readiness/run`, {
+      const response = await adminFetch(`/api/v1/admin/embedding-readiness/run`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           limit: parsedLimit,
           record_ids: [],
@@ -972,11 +1078,8 @@ export default function AdminPage() {
       setSelectedEmbeddingRunNote("");
       setSelectedEmbeddingRunError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/embedding-readiness/run`, {
+      const response = await adminFetch(`/api/v1/admin/embedding-readiness/run`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           limit: 1,
           record_ids: [selectedSourceId],
@@ -1007,13 +1110,16 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
+    if (!authToken) {
+      return;
+    }
     loadAdminSnapshot();
     loadWorkspace();
     loadActivity();
     loadRetrievalReadiness();
     loadEmbeddingReadiness();
     runRetrievalProbe("Can police arrest someone without warrant for online blackmail?");
-  }, []);
+  }, [authToken]);
 
   const filteredItems = useMemo(() => {
     if (!catalog) {
@@ -1067,9 +1173,8 @@ export default function AdminPage() {
       setDetailLoading(true);
       setDetailError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/${recordId}`, {
+      const response = await adminFetch(`/api/v1/admin/sources/${recordId}`, {
         method: "GET",
-        cache: "no-store",
       });
 
       if (!response.ok) {
@@ -1126,11 +1231,8 @@ export default function AdminPage() {
       setDraftLoading(true);
       setDraftError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/validate`, {
+      const response = await adminFetch(`/api/v1/admin/sources/validate`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(draftFormToPayload(draftForm)),
       });
 
@@ -1158,11 +1260,8 @@ export default function AdminPage() {
       setReviewLoading(true);
       setReviewError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/review`, {
+      const response = await adminFetch(`/api/v1/admin/sources/review`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(draftFormToPayload(draftForm)),
       });
 
@@ -1190,11 +1289,8 @@ export default function AdminPage() {
       setPublishLoading(true);
       setPublishError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/sources/publish-preview`, {
+      const response = await adminFetch(`/api/v1/admin/sources/publish-preview`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(draftFormToPayload(draftForm)),
       });
 
@@ -1223,11 +1319,8 @@ export default function AdminPage() {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/save`, {
+      const response = await adminFetch(`/api/v1/admin/workspace/drafts/save`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           workspace_draft_id: workspaceDraftId || undefined,
           draft: draftFormToPayload(draftForm),
@@ -1259,9 +1352,8 @@ export default function AdminPage() {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/${workspaceId}`, {
+      const response = await adminFetch(`/api/v1/admin/workspace/drafts/${workspaceId}`, {
         method: "GET",
-        cache: "no-store",
       });
 
       if (!response.ok) {
@@ -1295,11 +1387,8 @@ export default function AdminPage() {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/publish-packages/stage`, {
+      const response = await adminFetch(`/api/v1/admin/workspace/publish-packages/stage`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           workspace_draft_id: workspaceDraftId || undefined,
           draft: draftFormToPayload(draftForm),
@@ -1326,7 +1415,7 @@ export default function AdminPage() {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/publish-packages/${packageId}/publish`, {
+      const response = await adminFetch(`/api/v1/admin/workspace/publish-packages/${packageId}/publish`, {
         method: "POST",
       });
 
@@ -1355,7 +1444,7 @@ export default function AdminPage() {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/${workspaceId}`, {
+      const response = await adminFetch(`/api/v1/admin/workspace/drafts/${workspaceId}`, {
         method: "DELETE",
       });
 
@@ -1381,7 +1470,7 @@ export default function AdminPage() {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/publish-packages/${packageId}`, {
+      const response = await adminFetch(`/api/v1/admin/workspace/publish-packages/${packageId}`, {
         method: "DELETE",
       });
 
@@ -1440,11 +1529,8 @@ export default function AdminPage() {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/save`, {
+      const response = await adminFetch(`/api/v1/admin/workspace/drafts/save`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           label: createForm.citation_label || createForm.section_title || "New source draft",
           draft: draftFormToPayload(createForm),
@@ -1475,11 +1561,8 @@ export default function AdminPage() {
       setWorkspaceBusy(true);
       setWorkspaceActionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/workspace/drafts/save`, {
+      const response = await adminFetch(`/api/v1/admin/workspace/drafts/save`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           label: item.draft.citation_label || item.draft.section_title || "Ingestion candidate",
           draft: draftFormToPayload(item.draft),
@@ -1512,11 +1595,8 @@ export default function AdminPage() {
       setIngestionLoading(true);
       setIngestionError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/ingestion/preview`, {
+      const response = await adminFetch(`/api/v1/admin/ingestion/preview`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           source_title: ingestionSourceTitle,
           law_name: ingestionLawName,
@@ -1567,11 +1647,8 @@ export default function AdminPage() {
       setIngestionBatchLoading(true);
       setIngestionBatchError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/ingestion/batch-preview`, {
+      const response = await adminFetch(`/api/v1/admin/ingestion/batch-preview`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           source_title: ingestionSourceTitle,
           law_name: ingestionLawName,
@@ -1605,11 +1682,8 @@ export default function AdminPage() {
       setCreateLoading(true);
       setCreateError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/source-records`, {
+      const response = await adminFetch(`/api/v1/admin/source-records`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(draftFormToPayload(createForm)),
       });
 
@@ -1648,11 +1722,8 @@ export default function AdminPage() {
       setPersistUpdateLoading(true);
       setPersistUpdateError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/source-records/${selectedSourceId}`, {
+      const response = await adminFetch(`/api/v1/admin/source-records/${selectedSourceId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(draftFormToPayload(draftForm)),
       });
 
@@ -1695,7 +1766,7 @@ export default function AdminPage() {
       setDeleteLoading(true);
       setDeleteError("");
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/admin/source-records/${selectedSourceId}`, {
+      const response = await adminFetch(`/api/v1/admin/source-records/${selectedSourceId}`, {
         method: "DELETE",
       });
 
@@ -1777,6 +1848,76 @@ export default function AdminPage() {
 
   const selectedRecordVisible = filteredItems.some((item) => item.id === selectedSourceId);
 
+  if (authChecking) {
+    return (
+      <main style={pageWrap}>
+        <div style={containerStyle}>
+          <div style={{ ...cardStyle, padding: "32px", maxWidth: "560px", margin: "80px auto 0" }}>
+            Checking admin session...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!authToken || !authUser) {
+    return (
+      <main style={pageWrap}>
+        <div style={containerStyle}>
+          <div style={{ ...cardStyle, padding: "32px", maxWidth: "560px", margin: "80px auto 0" }}>
+            <div style={{ ...badge(), marginBottom: "12px" }}>Admin authentication required</div>
+            <h1 style={{ fontSize: "38px", lineHeight: 1.1, margin: "0 0 12px" }}>Admin Login</h1>
+            <p style={{ margin: "0 0 24px", color: "#c8d6f7", lineHeight: 1.7 }}>
+              Sign in to access the protected admin workspace. Public pages remain unchanged and do not require authentication.
+            </p>
+
+            <form onSubmit={handleAdminLogin} style={{ display: "grid", gap: "16px" }}>
+              <div>
+                <div style={{ color: "#dfe7ff", fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Username</div>
+                <input
+                  type="text"
+                  value={loginUsername}
+                  onChange={(event) => setLoginUsername(event.target.value)}
+                  style={fieldStyle}
+                  autoComplete="username"
+                />
+              </div>
+              <div>
+                <div style={{ color: "#dfe7ff", fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>Password</div>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                  style={fieldStyle}
+                  autoComplete="current-password"
+                />
+              </div>
+
+              {authError && (
+                <div style={{ ...softCardStyle, border: "1px solid rgba(255, 120, 120, 0.25)", color: "#ffe1e1" }}>
+                  {authError}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "4px" }}>
+                <button
+                  type="submit"
+                  style={{ ...secondaryButton, background: "#dfe7ff", color: "#071226", border: "none" }}
+                  disabled={loginLoading}
+                >
+                  {loginLoading ? "Signing in..." : "Sign In"}
+                </button>
+                <Link href="/" style={secondaryButton}>
+                  Back to Homepage
+                </Link>
+              </div>
+            </form>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main style={pageWrap}>
       <div style={containerStyle}>
@@ -1819,13 +1960,19 @@ export default function AdminPage() {
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ ...badge("green") }}>
+              Signed in as {authUser.display_name}
+            </div>
             <Link href="/" style={secondaryButton}>
               Back to Homepage
             </Link>
             <Link href="/chat" style={secondaryButton}>
               Open Chat
             </Link>
+            <button type="button" style={secondaryButton} onClick={handleAdminLogout}>
+              Sign Out
+            </button>
           </div>
         </div>
 

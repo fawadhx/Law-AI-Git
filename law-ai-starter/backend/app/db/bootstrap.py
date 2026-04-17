@@ -4,7 +4,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import settings
 from app.data.legal_sources import LEGAL_SOURCES
 from app.db.base import Base
-from app.db.models import LegalSourceORM
+from app.db.models import (
+    IngestionRunORM,
+    LegalInstrumentORM,
+    LegalInstrumentVersionORM,
+    LegalProvisionORM,
+    LegalSourceORM,
+)
 from app.db.session import get_database_status, get_engine, get_session_factory
 
 

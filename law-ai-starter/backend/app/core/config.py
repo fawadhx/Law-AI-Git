@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     legal_source_vector_search_enabled: bool = False
     legal_source_vector_query_top_k: int = 8
     redis_url: str | None = None
+    admin_auth_secret_key: str = "change-this-law-ai-admin-secret"
+    admin_auth_issuer: str = "law-ai-admin"
+    admin_auth_username: str = "admin"
+    admin_auth_display_name: str = "Admin"
+    admin_auth_password: str = "admin123"
+    admin_auth_password_sha256: str | None = None
+    admin_auth_access_token_ttl_minutes: int = 480
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
