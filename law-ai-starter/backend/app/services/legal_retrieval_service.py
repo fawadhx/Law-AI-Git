@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.db.models import LegalSourceEmbeddingORM, LegalSourceORM
 from app.db.session import get_session_factory
 from app.schemas.legal_source import LegalSourceRecord
+from app.services.legal_corpus_retrieval_service import get_legal_corpus_retrieval_snapshot
 from app.services.legal_source_embedding_service import (
     generate_text_embedding,
     is_embedding_provider_ready,
@@ -31,17 +32,37 @@ def _is_vector_retrieval_active(diagnostics: dict[str, object]) -> bool:
 
 def get_retrieval_source_status() -> dict[str, object]:
     diagnostics = get_legal_source_store_diagnostics()
+    corpus_snapshot = get_legal_corpus_retrieval_snapshot()
+    corpus_record_count = int(corpus_snapshot.get("record_count", 0) or 0)
+    retrieval_record_count = len(_get_active_retrieval_records()) if corpus_record_count > 0 else diagnostics["active_record_count"]
     vector_retrieval_active = _is_vector_retrieval_active(diagnostics)
+    active_source = diagnostics["active_source"]
+    source_label = diagnostics["source_label"]
+    detail = diagnostics["detail"]
+
+    if corpus_record_count > 0:
+        active_source = "hybrid"
+        source_label = "Hybrid corpus + prototype retrieval"
+        detail = (
+            f"{diagnostics['detail']} Reviewed corpus sections available: {corpus_record_count}. "
+            "Structured corpus records are merged into retrieval and take precedence over duplicate prototype sections."
+        ).strip()
+
     return {
-        "active_source": diagnostics["active_source"],
-        "source_label": diagnostics["source_label"],
+        "active_source": active_source,
+        "source_label": source_label,
         "database_ready": diagnostics["database_ready"],
         "foundation_stage": diagnostics["foundation_stage"],
-        "active_record_count": diagnostics["active_record_count"],
+        "active_record_count": retrieval_record_count,
+        "prototype_record_count": diagnostics["active_record_count"],
+        "corpus_record_count": corpus_record_count,
+        "retrieval_record_count": retrieval_record_count,
         "persisted_record_count": diagnostics["persisted_record_count"],
-        "detail": diagnostics["detail"],
+        "detail": detail,
         "retrieval_profile": diagnostics["retrieval_profile"],
         "retrieval_profile_label": diagnostics["retrieval_profile_label"],
+        "corpus_retrieval_mode": str(corpus_snapshot.get("retrieval_mode", "structured_sections_keyword_ready")),
+        "corpus_vector_prepared_count": int(corpus_snapshot.get("vector_prepared_count", 0) or 0),
         "vector_stage": diagnostics["vector_stage"],
         "vector_readiness_label": diagnostics["vector_readiness_label"],
         "embedding_ready_records": diagnostics["embedding_ready_records"],
@@ -64,9 +85,45 @@ def _can_run_vector_retrieval() -> bool:
     return bool(status["vector_retrieval_active"])
 
 
+def _record_dedup_key(record: LegalSourceRecord) -> tuple[str, str, str]:
+    return (
+        normalize_text(record.law_name),
+        normalize_text(record.section_number),
+        normalize_text(record.section_title),
+    )
+
+
+def _get_active_retrieval_records() -> list[LegalSourceRecord]:
+    prototype_records = get_active_legal_source_records()
+    corpus_snapshot = get_legal_corpus_retrieval_snapshot()
+    corpus_records = list(corpus_snapshot.get("records", []))
+
+    if not corpus_records:
+        return prototype_records
+
+    merged: list[LegalSourceRecord] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    for record in corpus_records:
+        key = _record_dedup_key(record)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(record)
+
+    for record in prototype_records:
+        key = _record_dedup_key(record)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(record)
+
+    return merged
+
+
 def _build_keyword_results(query: str) -> list[tuple[int, LegalSourceRecord]]:
     keyword_results: list[tuple[int, LegalSourceRecord]] = []
-    for record in get_active_legal_source_records():
+    for record in _get_active_retrieval_records():
         score = score_record(query, record)
         if score > 0:
             keyword_results.append((score, record))
@@ -1402,10 +1459,10 @@ def get_retrieval_probe(query: str, limit: int = 6) -> dict[str, object]:
         candidate_rows.append(
             {
                 "record_id": record.id,
-                "citation_label": record.citation,
+                "citation_label": record.citation_label,
                 "law_name": record.law_name,
                 "section_number": record.section_number,
-                "category": record.category,
+                "category": record.provision_kind,
                 "keyword_score": keyword_score,
                 "vector_similarity": vector_similarity,
                 "vector_bonus": vector_bonus,
@@ -1428,8 +1485,8 @@ def get_retrieval_probe(query: str, limit: int = 6) -> dict[str, object]:
         "selected_count": len(selected_results),
         "records": candidate_rows,
         "workflow_note": (
-            "This probe shows how keyword scoring and vector similarity currently combine inside Phase 5 retrieval. "
-            "Vector similarity is only present when the database source is active, embeddings are ready, and vector search is enabled."
+            "This probe shows how keyword scoring and vector similarity currently combine inside retrieval. "
+            "Reviewed legal-corpus sections participate in the keyword layer when available, while vector similarity is only present for the persisted legal-source catalog when embeddings are ready and vector search is enabled."
         ),
     }
 

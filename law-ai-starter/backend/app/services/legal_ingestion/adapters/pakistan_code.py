@@ -30,6 +30,8 @@ class PakistanCodeAdapter(PakistanLawIngestionAdapter):
                 "federal primary and secondary legislation in revised form and is updated after "
                 "publication in the official Gazette."
             ),
+            source_authority="Ministry of Law and Justice / Pakistan Code",
+            source_priority=2,
             ingestion_stage="scaffolded",
             active=True,
         )
@@ -55,6 +57,7 @@ class PakistanCodeAdapter(PakistanLawIngestionAdapter):
                 language="en",
                 version_label="revised_federal_text",
                 source_trust_level="official_repository",
+                source_authority="Ministry of Law and Justice / Pakistan Code",
                 extraction_metadata={
                     "seed_reason": "Existing prototype corpus already references this federal law extensively.",
                     "review_priority": "high",
@@ -73,6 +76,7 @@ class PakistanCodeAdapter(PakistanLawIngestionAdapter):
                 language="en",
                 version_label="revised_federal_text",
                 source_trust_level="official_repository",
+                source_authority="Ministry of Law and Justice / Pakistan Code",
                 extraction_metadata={
                     "seed_reason": "Priority federal procedural law for officer powers, arrest, search, and FIR guidance.",
                     "review_priority": "high",

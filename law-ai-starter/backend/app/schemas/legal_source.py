@@ -24,6 +24,10 @@ class LegalSourceRecord(BaseModel):
     embedding_model: str | None = None
     embedding_dimensions: int | None = None
     embedding_updated_at: str | None = None
+    source_url: str | None = None
+    provenance: str | None = None
+    source_trust_level: str | None = None
+    retrieval_source_type: str = "prototype"
 
     @property
     def searchable_parts(self) -> list[str]:
@@ -42,4 +46,8 @@ class LegalSourceRecord(BaseModel):
             self.offence_group or "",
             self.punishment_summary or "",
             self.provision_kind,
+            self.provenance or "",
+            self.source_url or "",
+            self.source_trust_level or "",
+            self.retrieval_source_type,
         ]

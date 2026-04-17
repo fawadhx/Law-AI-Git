@@ -6,11 +6,13 @@ from app.schemas.legal_corpus import (
     LegalCorpusFoundationResponse,
     LegalCorpusInstrumentCatalogResponse,
     LegalCorpusLayerInfo,
+    LegalCorpusSyncPlanResponse,
 )
 from app.services.legal_corpus_store import get_legal_corpus_storage_snapshot, list_corpus_instruments
 from app.services.legal_import_service import (
+    get_corpus_sync_plan,
     get_admin_review_fields,
-    plan_federal_bootstrap_runs,
+    plan_bootstrap_runs,
     preview_seed_documents,
 )
 from app.services.legal_ingestion import get_ingestion_bootstrap_notes, get_ingestion_source_registry
@@ -21,7 +23,7 @@ def get_legal_corpus_foundation() -> LegalCorpusFoundationResponse:
     notes = [
         "This milestone adds canonical corpus tables for instrument, version, provision, and ingestion-run tracking without replacing the existing prototype legal_source_records flow.",
         "Imported official-source content should stay unpublished until admin review maps it into a reviewed version and, later, retrieval-ready provision records.",
-        "Federal Pakistan Code and Gazette-backed ingestion adapters are scaffolded first; provincial repositories should plug into the same adapter contract in a later phase.",
+        "Federal Pakistan Code and Gazette-backed ingestion adapters are scaffolded first, and provincial adapters now follow the same contract for Punjab, Sindh, Khyber Pakhtunkhwa, and Balochistan sources.",
     ]
     notes.extend(get_ingestion_bootstrap_notes())
 
@@ -53,7 +55,7 @@ def get_legal_corpus_foundation() -> LegalCorpusFoundationResponse:
         source_registry=get_ingestion_source_registry(),
         review_fields=get_admin_review_fields(),
         source_previews=preview_seed_documents(),
-        planned_runs=plan_federal_bootstrap_runs(),
+        planned_runs=plan_bootstrap_runs(),
         implementation_notes=notes,
     )
 
@@ -68,3 +70,7 @@ def get_legal_corpus_instrument_catalog() -> LegalCorpusInstrumentCatalogRespons
             "They do not automatically participate in chat retrieval until later retrieval-integration phases."
         ),
     )
+
+
+def get_legal_corpus_sync_plan() -> LegalCorpusSyncPlanResponse:
+    return get_corpus_sync_plan()

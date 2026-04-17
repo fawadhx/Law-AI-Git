@@ -31,6 +31,7 @@ class LegalInstrumentRecord(BaseModel):
     amendment_notes: str | None = None
     admin_review_status: ReviewStatus = "imported_unreviewed"
     provenance_source_slug: str | None = None
+    source_authority: str | None = None
 
 
 class LegalInstrumentVersionRecord(BaseModel):
@@ -53,13 +54,16 @@ class LegalInstrumentVersionRecord(BaseModel):
     cleaned_text: str | None = None
     admin_review_status: ReviewStatus = "imported_unreviewed"
     extraction_metadata: dict[str, object] = Field(default_factory=dict)
+    source_authority: str | None = None
 
 
-class LegalProvisionRecord(BaseModel):
-    provision_id: str
+class LegalStructuredSectionRecord(BaseModel):
+    section_id: str
     instrument_id: str
     version_id: str
-    provision_path: str
+    section_type: str = "section"
+    section_path: str
+    parent_section_path: str | None = None
     part_number: str | None = None
     chapter_number: str | None = None
     section_number: str | None = None
@@ -72,11 +76,16 @@ class LegalProvisionRecord(BaseModel):
     retrieval_ready: bool = False
 
 
+class LegalProvisionRecord(LegalStructuredSectionRecord):
+    provision_id: str | None = None
+
+
 class IngestionSourceDefinition(BaseModel):
     source_slug: str
     label: str
     jurisdiction: str = "Pakistan"
     government_level: GovernmentLevel = "federal"
+    province: str | None = None
     trust_level: SourceTrustLevel
     source_homepage: str
     update_mode: str
@@ -84,8 +93,35 @@ class IngestionSourceDefinition(BaseModel):
     supported_law_types: list[str] = Field(default_factory=list)
     supported_languages: list[str] = Field(default_factory=list)
     source_notes: str
+    source_authority: str
+    source_priority: int = 100
     ingestion_stage: str = "planned"
     active: bool = True
+
+
+class IngestionSyncPlan(BaseModel):
+    source_slug: str
+    source_label: str
+    jurisdiction: str = "Pakistan"
+    government_level: GovernmentLevel
+    province: str | None = None
+    update_mode: str
+    source_priority: int = 100
+    duplicate_identity_fields: list[str] = Field(default_factory=list)
+    duplicate_version_fields: list[str] = Field(default_factory=list)
+    provenance_fields: list[str] = Field(default_factory=list)
+    review_gate: str = "admin_review_required_before_publish"
+    sync_notes: list[str] = Field(default_factory=list)
+
+
+class SourceDocumentLocator(BaseModel):
+    document_id: str
+    source_slug: str
+    source_url: str
+    label: str
+    source_format: str = "html"
+    checksum_hint: str | None = None
+    discovered_at: str | None = None
 
 
 class RawSourceDocumentInput(BaseModel):
@@ -109,6 +145,7 @@ class RawSourceDocumentInput(BaseModel):
     amendment_notes: str | None = None
     source_format: str = "html"
     source_trust_level: SourceTrustLevel
+    source_authority: str | None = None
     raw_text: str | None = None
     cleaned_text: str | None = None
     extraction_metadata: dict[str, object] = Field(default_factory=dict)
@@ -177,7 +214,60 @@ class LegalCorpusStorageSnapshot(BaseModel):
 class NormalizedInstrumentBundle(BaseModel):
     instrument: LegalInstrumentRecord
     version: LegalInstrumentVersionRecord
-    provisions: list[LegalProvisionRecord] = Field(default_factory=list)
+    structured_sections: list[LegalStructuredSectionRecord] = Field(default_factory=list)
+
+
+class IngestionDiscoveryResult(BaseModel):
+    adapter_key: str
+    discovered_documents: list[SourceDocumentLocator] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class IngestionNormalizationResult(BaseModel):
+    adapter_key: str
+    bundles: list[NormalizedInstrumentBundle] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class IngestionDuplicateCandidate(BaseModel):
+    duplicate_type: str
+    instrument_id: str | None = None
+    version_id: str | None = None
+    title: str
+    official_citation: str | None = None
+    source_url: str | None = None
+    reason: str
+
+
+class IngestionImportItemResult(BaseModel):
+    adapter_key: str
+    source_slug: str
+    instrument_id: str
+    version_id: str
+    title: str
+    official_citation: str | None = None
+    source_url: str | None = None
+    outcome: str
+    provenance_summary: str
+    duplicate_candidates: list[IngestionDuplicateCandidate] = Field(default_factory=list)
+
+
+class FederalImportPipelineResponse(BaseModel):
+    status: str
+    run_label: str
+    discovered_document_count: int
+    normalized_bundle_count: int
+    imported_bundle_count: int
+    duplicate_bundle_count: int
+    runs_recorded: int
+    items: list[IngestionImportItemResult] = Field(default_factory=list)
+    workflow_note: str
+
+
+class LegalCorpusSyncPlanResponse(BaseModel):
+    generated_at: str
+    sync_plans: list[IngestionSyncPlan] = Field(default_factory=list)
+    workflow_note: str
 
 
 class LegalCorpusFoundationResponse(BaseModel):

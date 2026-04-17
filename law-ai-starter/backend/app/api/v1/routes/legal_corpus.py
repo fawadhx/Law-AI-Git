@@ -2,14 +2,17 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps.admin_auth import require_admin_auth, require_admin_write_access
 from app.schemas.legal_corpus import (
+    FederalImportPipelineResponse,
     LegalCorpusBootstrapResponse,
     LegalCorpusFoundationResponse,
     LegalCorpusInstrumentCatalogResponse,
+    LegalCorpusSyncPlanResponse,
 )
-from app.services.legal_import_service import bootstrap_federal_seed_metadata
+from app.services.legal_import_service import bootstrap_federal_seed_metadata, import_federal_seed_foundation
 from app.services.legal_corpus_service import (
     get_legal_corpus_foundation,
     get_legal_corpus_instrument_catalog,
+    get_legal_corpus_sync_plan,
 )
 
 router = APIRouter(dependencies=[Depends(require_admin_auth)])
@@ -23,6 +26,11 @@ def admin_legal_corpus_foundation() -> LegalCorpusFoundationResponse:
 @router.get("/admin/legal-corpus/instruments", response_model=LegalCorpusInstrumentCatalogResponse)
 def admin_legal_corpus_instruments() -> LegalCorpusInstrumentCatalogResponse:
     return get_legal_corpus_instrument_catalog()
+
+
+@router.get("/admin/legal-corpus/sync-plan", response_model=LegalCorpusSyncPlanResponse)
+def admin_legal_corpus_sync_plan() -> LegalCorpusSyncPlanResponse:
+    return get_legal_corpus_sync_plan()
 
 
 @router.post("/admin/legal-corpus/bootstrap-federal-seeds", response_model=LegalCorpusBootstrapResponse)
@@ -41,3 +49,10 @@ def admin_bootstrap_federal_seed_metadata(
             "No retrieval publication or full corpus import was attempted."
         ),
     )
+
+
+@router.post("/admin/legal-corpus/import-federal-foundation", response_model=FederalImportPipelineResponse)
+def admin_import_federal_foundation(
+    _: object = Depends(require_admin_write_access),
+) -> FederalImportPipelineResponse:
+    return import_federal_seed_foundation()

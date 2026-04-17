@@ -6,7 +6,7 @@ import re
 from app.schemas.legal_corpus import (
     LegalInstrumentRecord,
     LegalInstrumentVersionRecord,
-    LegalProvisionRecord,
+    LegalStructuredSectionRecord,
     NormalizedInstrumentBundle,
     RawSourceDocumentInput,
 )
@@ -73,6 +73,7 @@ def normalize_source_document(payload: RawSourceDocumentInput) -> NormalizedInst
         amendment_notes=payload.amendment_notes,
         admin_review_status="imported_unreviewed",
         provenance_source_slug=payload.source_slug,
+        source_authority=payload.source_authority,
     )
     version = LegalInstrumentVersionRecord(
         version_id=version_id,
@@ -94,11 +95,12 @@ def normalize_source_document(payload: RawSourceDocumentInput) -> NormalizedInst
         cleaned_text=cleaned_text,
         admin_review_status="imported_unreviewed",
         extraction_metadata=dict(payload.extraction_metadata),
+        source_authority=payload.source_authority,
     )
     return NormalizedInstrumentBundle(
         instrument=instrument,
         version=version,
-        provisions=[],
+        structured_sections=[],
     )
 
 
@@ -116,13 +118,15 @@ def make_provision_record(
     subsection_number: str | None = None,
     summary: str | None = None,
     citations: list[str] | None = None,
-) -> LegalProvisionRecord:
-    provision_id = f"{version_id}-{_slugify(provision_path)}"
-    return LegalProvisionRecord(
-        provision_id=provision_id,
+) -> LegalStructuredSectionRecord:
+    section_id = f"{version_id}-{_slugify(provision_path)}"
+    return LegalStructuredSectionRecord(
+        section_id=section_id,
         instrument_id=instrument_id,
         version_id=version_id,
-        provision_path=provision_path,
+        section_type="section" if subsection_number is None else "subsection",
+        section_path=provision_path,
+        parent_section_path=section_number if subsection_number else None,
         part_number=part_number,
         chapter_number=chapter_number,
         section_number=section_number,

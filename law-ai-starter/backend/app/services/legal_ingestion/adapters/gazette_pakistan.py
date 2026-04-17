@@ -30,6 +30,8 @@ class GazettePakistanAdapter(PakistanLawIngestionAdapter):
                 "exposes a Document Retrieval System for Gazette notifications and also warns that users should "
                 "refer to the original Gazette where doubt exists."
             ),
+            source_authority="Official Gazette / Gazette-linked federal publications",
+            source_priority=1,
             ingestion_stage="scaffolded",
             active=True,
         )
@@ -53,6 +55,7 @@ class GazettePakistanAdapter(PakistanLawIngestionAdapter):
                 language="en",
                 version_label="gazette_reference_seed",
                 source_trust_level="gazette_original",
+                source_authority="Official Gazette / Gazette-linked federal publications",
                 extraction_metadata={
                     "seed_reason": "Track Gazette provenance separately from revised-text repositories.",
                     "review_priority": "high",

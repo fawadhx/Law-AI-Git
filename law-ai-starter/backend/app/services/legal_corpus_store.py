@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.models import IngestionRunORM, LegalInstrumentORM, LegalInstrumentVersionORM, LegalProvisionORM
@@ -12,7 +12,7 @@ from app.schemas.legal_corpus import (
     LegalCorpusStorageSnapshot,
     LegalInstrumentRecord,
     LegalInstrumentVersionRecord,
-    LegalProvisionRecord,
+    LegalStructuredSectionRecord,
     NormalizedInstrumentBundle,
 )
 
@@ -92,6 +92,9 @@ def upsert_instrument_bundle(bundle: NormalizedInstrumentBundle) -> bool:
         instrument.amendment_notes = bundle.instrument.amendment_notes
         instrument.admin_review_status = bundle.instrument.admin_review_status
         instrument.provenance_source_slug = bundle.instrument.provenance_source_slug
+        instrument.extra_metadata = {
+            "source_authority": bundle.instrument.source_authority,
+        }
         session.merge(instrument)
 
         version = session.get(LegalInstrumentVersionORM, bundle.version.version_id) or LegalInstrumentVersionORM(
@@ -114,7 +117,10 @@ def upsert_instrument_bundle(bundle: NormalizedInstrumentBundle) -> bool:
         version.raw_text = bundle.version.raw_text
         version.cleaned_text = bundle.version.cleaned_text
         version.admin_review_status = bundle.version.admin_review_status
-        version.extraction_metadata = dict(bundle.version.extraction_metadata)
+        version.extraction_metadata = {
+            **dict(bundle.version.extraction_metadata),
+            "source_authority": bundle.version.source_authority,
+        }
         session.merge(version)
 
         existing_provisions = session.scalars(
@@ -122,24 +128,26 @@ def upsert_instrument_bundle(bundle: NormalizedInstrumentBundle) -> bool:
         ).all()
         existing_ids = {item.provision_id for item in existing_provisions}
 
-        incoming_ids = {provision.provision_id for provision in bundle.provisions}
-        for provision in bundle.provisions:
-            row = session.get(LegalProvisionORM, provision.provision_id) or LegalProvisionORM(
-                provision_id=provision.provision_id
+        incoming_ids = {section.section_id for section in bundle.structured_sections}
+        for section in bundle.structured_sections:
+            row = session.get(LegalProvisionORM, section.section_id) or LegalProvisionORM(
+                provision_id=section.section_id
             )
-            row.instrument_id = provision.instrument_id
-            row.version_id = provision.version_id
-            row.provision_path = provision.provision_path
-            row.part_number = provision.part_number
-            row.chapter_number = provision.chapter_number
-            row.section_number = provision.section_number
-            row.subsection_number = provision.subsection_number
-            row.heading = provision.heading
-            row.body_text = provision.body_text
-            row.summary = provision.summary
-            row.citations = list(provision.citations)
-            row.sort_index = provision.sort_index
-            row.retrieval_ready = provision.retrieval_ready
+            row.instrument_id = section.instrument_id
+            row.version_id = section.version_id
+            row.section_type = section.section_type
+            row.provision_path = section.section_path
+            row.parent_section_path = section.parent_section_path
+            row.part_number = section.part_number
+            row.chapter_number = section.chapter_number
+            row.section_number = section.section_number
+            row.subsection_number = section.subsection_number
+            row.heading = section.heading
+            row.body_text = section.body_text
+            row.summary = section.summary
+            row.citations = list(section.citations)
+            row.sort_index = section.sort_index
+            row.retrieval_ready = section.retrieval_ready
             session.merge(row)
 
         for stale_id in existing_ids - incoming_ids:
@@ -206,6 +214,145 @@ def list_corpus_instruments(limit: int = 50) -> list[LegalInstrumentRecord]:
             amendment_notes=row.amendment_notes,
             admin_review_status=row.admin_review_status,
             provenance_source_slug=row.provenance_source_slug,
+            source_authority=(row.extra_metadata or {}).get("source_authority"),
         )
         for row in rows
     ]
+
+
+def find_matching_instrument_candidates(
+    *,
+    title: str,
+    official_citation: str | None = None,
+    jurisdiction: str | None = None,
+    government_level: str | None = None,
+    province: str | None = None,
+) -> list[LegalInstrumentRecord]:
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return []
+
+    with session_factory() as session:
+        if official_citation:
+            statement = select(LegalInstrumentORM).where(
+                or_(
+                    LegalInstrumentORM.title == title,
+                    LegalInstrumentORM.official_citation == official_citation,
+                )
+            )
+        else:
+            statement = select(LegalInstrumentORM).where(LegalInstrumentORM.title == title)
+        if jurisdiction:
+            statement = statement.where(LegalInstrumentORM.jurisdiction == jurisdiction)
+        if government_level:
+            statement = statement.where(LegalInstrumentORM.government_level == government_level)
+        if province:
+            statement = statement.where(LegalInstrumentORM.province == province)
+        elif government_level == "provincial":
+            statement = statement.where(LegalInstrumentORM.province.is_not(None))
+        elif government_level == "federal":
+            statement = statement.where(LegalInstrumentORM.province.is_(None))
+        rows = session.scalars(statement).all()
+
+    seen: set[str] = set()
+    candidates: list[LegalInstrumentRecord] = []
+    for row in rows:
+        if row.instrument_id in seen:
+            continue
+        seen.add(row.instrument_id)
+        candidates.append(
+            LegalInstrumentRecord(
+                instrument_id=row.instrument_id,
+                title=row.title,
+                short_title=row.short_title,
+                jurisdiction=row.jurisdiction,
+                government_level=row.government_level,
+                province=row.province,
+                category=row.category,
+                law_type=row.law_type,
+                promulgation_date=row.promulgation_date.isoformat() if row.promulgation_date else None,
+                effective_date=row.effective_date.isoformat() if row.effective_date else None,
+                status=row.status,
+                official_citation=row.official_citation,
+                source_url=row.source_url,
+                gazette_reference=row.gazette_reference,
+                language=row.language,
+                current_version_id=row.current_version_id,
+                amendment_notes=row.amendment_notes,
+                admin_review_status=row.admin_review_status,
+                provenance_source_slug=row.provenance_source_slug,
+                source_authority=(row.extra_metadata or {}).get("source_authority"),
+            )
+        )
+    return candidates
+
+
+def find_matching_version_candidates(
+    *,
+    source_url: str | None = None,
+    content_hash: str | None = None,
+    instrument_id: str | None = None,
+) -> list[LegalInstrumentVersionRecord]:
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return []
+
+    statements = []
+    if source_url:
+        statements.append(select(LegalInstrumentVersionORM).where(LegalInstrumentVersionORM.source_url == source_url))
+    if content_hash:
+        statements.append(select(LegalInstrumentVersionORM).where(LegalInstrumentVersionORM.content_hash == content_hash))
+    if instrument_id:
+        statements.append(
+            select(LegalInstrumentVersionORM).where(LegalInstrumentVersionORM.instrument_id == instrument_id)
+        )
+
+    if not statements:
+        return []
+
+    with session_factory() as session:
+        rows: list[LegalInstrumentVersionORM] = []
+        for statement in statements:
+            rows.extend(session.scalars(statement).all())
+
+    seen: set[str] = set()
+    candidates: list[LegalInstrumentVersionRecord] = []
+    for row in rows:
+        if row.version_id in seen:
+            continue
+        seen.add(row.version_id)
+        candidates.append(
+            LegalInstrumentVersionRecord(
+                version_id=row.version_id,
+                instrument_id=row.instrument_id,
+                source_slug=row.source_slug,
+                source_url=row.source_url,
+                source_trust_level=row.source_trust_level,
+                version_label=row.version_label,
+                version_date=row.version_date.isoformat() if row.version_date else None,
+                promulgation_date=row.promulgation_date.isoformat() if row.promulgation_date else None,
+                effective_date=row.effective_date.isoformat() if row.effective_date else None,
+                publication_status=row.publication_status,
+                language=row.language,
+                content_hash=row.content_hash,
+                source_format=row.source_format,
+                gazette_reference=row.gazette_reference,
+                amendment_notes=row.amendment_notes,
+                raw_text=row.raw_text,
+                cleaned_text=row.cleaned_text,
+                admin_review_status=row.admin_review_status,
+                extraction_metadata=dict(row.extraction_metadata or {}),
+                source_authority=(row.extraction_metadata or {}).get("source_authority"),
+            )
+        )
+    return candidates
+
+
+def instrument_exists(instrument_id: str) -> bool:
+    session_factory = get_session_factory()
+    if session_factory is None:
+        return False
+
+    with session_factory() as session:
+        row = session.get(LegalInstrumentORM, instrument_id)
+        return row is not None

@@ -6,6 +6,8 @@ class Citation(BaseModel):
     section: str
     note: str
     excerpt: str = ""
+    provenance: str | None = None
+    source_url: str | None = None
 
 
 class ChatCategory(BaseModel):

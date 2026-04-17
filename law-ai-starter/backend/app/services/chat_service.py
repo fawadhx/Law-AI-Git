@@ -30,7 +30,7 @@ PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
 
 def build_source_store_scope_note(question: str, category_key: str, confidence_level: str) -> str | None:
     status = get_retrieval_source_status()
-    if status["active_source"] != "database":
+    if status["active_source"] not in {"database", "hybrid"}:
         return None
 
     lower = question.strip().lower()
@@ -39,7 +39,11 @@ def build_source_store_scope_note(question: str, category_key: str, confidence_l
     retrieval_label = (
         "the persisted legal-source catalog with vector-assisted reranking"
         if status.get("vector_retrieval_active")
-        else "the persisted legal-source catalog"
+        else (
+            "the hybrid retrieval catalog of reviewed corpus sections plus prototype records"
+            if status["active_source"] == "hybrid"
+            else "the persisted legal-source catalog"
+        )
     )
 
     if confidence_level == "high" and (is_exact_lookup or category_key in {"fir_reporting", "arrest_detention", "officer_authority"}):
@@ -253,12 +257,17 @@ def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
         if key in seen:
             continue
         seen.add(key)
+        note = record.section_title
+        if record.provenance:
+            note = f"{note} | Source: {record.provenance}"
         citations.append(
             Citation(
                 title=record.law_name,
                 section=record.section_number,
-                note=record.section_title,
+                note=note,
                 excerpt=record.excerpt,
+                provenance=record.provenance,
+                source_url=record.source_url,
             )
         )
 
@@ -585,6 +594,7 @@ def build_weak_match_answer(
     section_note = build_specific_section_note(question, records)
     unresolved_section_note = build_unresolved_section_note(question, records)
     scope_note = build_scope_boundary_note(question, category["key"])
+    source_scope_note = build_source_store_scope_note(question, category["key"], confidence.level)
     lines = [
         "Closest currently available legal information",
         "",
@@ -603,6 +613,9 @@ def build_weak_match_answer(
 
     if scope_note:
         lines.extend(["", "Scope note:", scope_note])
+
+    if source_scope_note:
+        lines.extend(["", "Source transparency note:", source_scope_note])
 
     for record in records[:3]:
         lines.append(build_record_reference(record))
@@ -625,8 +638,8 @@ def build_weak_match_answer(
             "",
             "Current prototype note:",
             (
-                "This answer is based on the internal structured legal-source records currently "
-                "loaded into the prototype. It is general legal information, not a substitute for "
+                "This answer is based on the current structured legal dataset available to retrieval. "
+                "It is general legal information, not a substitute for "
                 "professional legal advice."
             ),
         ]
@@ -676,6 +689,7 @@ def build_match_answer(
     primary, main_related_records, support_records = split_records(question, records)
     intent = build_answer_intent(question)
     scope_note = build_scope_boundary_note(question, category["key"])
+    source_scope_note = build_source_store_scope_note(question, category["key"], confidence.level)
     officer_rank = detect_officer_rank(question)
     officer_note = build_officer_authority_note(officer_rank) if officer_rank else None
 
@@ -713,6 +727,9 @@ def build_match_answer(
     if scope_note:
         lines.extend(["", "Scope note:", scope_note])
 
+    if source_scope_note:
+        lines.extend(["", "Source transparency note:", source_scope_note])
+
     overlap_note = summarize_overlap(records)
     if overlap_note:
         lines.extend(["", "Overlap note:", overlap_note])
@@ -738,8 +755,8 @@ def build_match_answer(
             "",
             "Current prototype note:",
             (
-                "This answer is based on the internal structured legal-source records currently "
-                "loaded into the prototype. It is general legal information, not a substitute for "
+                "This answer is based on the current structured legal dataset available to retrieval. "
+                "It is general legal information, not a substitute for "
                 "professional legal advice."
             ),
         ]

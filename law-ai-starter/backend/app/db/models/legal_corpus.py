@@ -107,7 +107,9 @@ class LegalProvisionORM(Base):
         nullable=False,
         index=True,
     )
+    section_type: Mapped[str] = mapped_column(String(64), nullable=False, default="section")
     provision_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    parent_section_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     part_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     chapter_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     section_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
