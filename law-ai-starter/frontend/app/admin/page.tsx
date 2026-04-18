@@ -10,6 +10,7 @@ import {
   roleAllowsAdminWrite,
   type AdminSessionUser,
 } from "@/lib/admin-auth";
+import { API_BASE_URL, FRONTEND_APP_ENV } from "@/lib/runtime-config";
 
 type AdminStat = {
   value: string;
@@ -442,9 +443,6 @@ type AdminEmbeddingRunResponse = {
 };
 
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
-
 const pageWrap: React.CSSProperties = {
   minHeight: "100vh",
   background:
@@ -743,11 +741,16 @@ export default function AdminPage() {
       headers.set("Content-Type", "application/json");
     }
 
-    const response = await fetch(`${API_BASE_URL}${path}`, {
-      ...init,
-      headers,
-      cache: init.cache ?? "no-store",
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}${path}`, {
+        ...init,
+        headers,
+        cache: init.cache ?? "no-store",
+      });
+    } catch {
+      throw new Error("Unable to reach the admin service right now. Please try again shortly.");
+    }
 
     if (response.status === 401) {
       clearAdminToken();
@@ -768,6 +771,10 @@ export default function AdminPage() {
         // Ignore JSON parsing errors and keep the fallback message.
       }
       throw new Error(message);
+    }
+
+    if (!response.ok) {
+      throw new Error(await readApiError(response, `Request failed with status ${response.status}.`));
     }
 
     return response;
@@ -1905,6 +1912,29 @@ export default function AdminPage() {
 
   const selectedRecordVisible = filteredItems.some((item) => item.id === selectedSourceId);
   const canWriteAdmin = roleAllowsAdminWrite(authUser?.role);
+  const adminWarnings = useMemo(() => {
+    const warnings: string[] = [];
+
+    if (!canWriteAdmin && authUser) {
+      warnings.push("This admin session is read-only. Review and monitoring remain available, but write actions are blocked.");
+    }
+
+    if (summary?.catalog_source && !summary.catalog_source.database_ready) {
+      warnings.push(
+        "The admin source store is running in a fallback or in-memory mode, so changes may not persist across restarts."
+      );
+    }
+
+    if (catalog && catalog.items.length === 0) {
+      warnings.push(
+        "No legal source records are currently available in the admin catalog. Ingestion and review flows should be checked before relying on this workspace."
+      );
+    } else if (catalog && filteredItems.length === 0) {
+      warnings.push("The current filters do not match any source records. Clear or adjust the filters to continue reviewing records.");
+    }
+
+    return warnings;
+  }, [authUser, canWriteAdmin, summary, catalog, filteredItems.length]);
 
   if (authChecking) {
     return (
@@ -1976,9 +2006,10 @@ export default function AdminPage() {
             <div style={{ ...badge("green") }}>
               Signed in as {authUser.display_name}
             </div>
-            <div style={{ ...badge(canWriteAdmin ? "green" : "pink") }}>
+              <div style={{ ...badge(canWriteAdmin ? "green" : "pink") }}>
               {canWriteAdmin ? "Write access enabled" : `Read-only role: ${authUser.role}`}
             </div>
+            <div style={chipStyle}>Frontend env: {FRONTEND_APP_ENV}</div>
             <Link href="/" style={secondaryButton}>
               Back to Homepage
             </Link>
@@ -2008,6 +2039,25 @@ export default function AdminPage() {
             }}
           >
             Failed to load admin workspace: {error}
+          </div>
+        )}
+
+        {adminWarnings.length > 0 && (
+          <div
+            style={{
+              ...cardStyle,
+              padding: "20px 24px",
+              marginBottom: "24px",
+              border: "1px solid rgba(250, 204, 21, 0.22)",
+              background: "rgba(250, 204, 21, 0.08)",
+            }}
+          >
+            <div style={{ ...badge("blue"), marginBottom: "12px" }}>Safety notes</div>
+            <div style={{ display: "grid", gap: "8px", color: "#f7f0c0", lineHeight: 1.7 }}>
+              {adminWarnings.map((warning) => (
+                <div key={warning}>• {warning}</div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -2157,6 +2207,18 @@ export default function AdminPage() {
                 <div style={{ color: "#d6e2ff", lineHeight: 1.7, marginBottom: "16px" }}>
                   {catalog.workflow_note}
                 </div>
+
+                {catalog.items.length === 0 && (
+                  <div style={{ ...softCardStyle, marginBottom: "16px", color: "#f7f0c0", lineHeight: 1.7 }}>
+                    No admin source records are available yet. This workspace can still inspect controls and review ingestion-related readiness, but it should not be treated as a published legal corpus.
+                  </div>
+                )}
+
+                {catalog.items.length > 0 && filteredItems.length === 0 && (
+                  <div style={{ ...softCardStyle, marginBottom: "16px", color: "#dbe4ff", lineHeight: 1.7 }}>
+                    No source records match the current filters. Clear the search or filter chips to continue reviewing the catalog safely.
+                  </div>
+                )}
 
                 <div style={{ display: "grid", gap: "14px" }}>
                   {summary.control_areas.map((item) => (

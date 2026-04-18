@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Citation(BaseModel):
@@ -27,7 +27,15 @@ class MatchExplanation(BaseModel):
 
 
 class ChatQueryRequest(BaseModel):
-    question: str
+    question: str = Field(min_length=5, max_length=1200)
+
+    @field_validator("question")
+    @classmethod
+    def normalize_question(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("Question must be at least 5 characters long.")
+        return normalized
 
 
 class ChatQueryResponse(BaseModel):

@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -13,10 +14,21 @@ def get_engine() -> Engine | None:
     if not settings.database_url:
         return None
 
+    connect_args: dict[str, object] = {}
+    pool_size = settings.database_pool_size
+    max_overflow = settings.database_max_overflow
+    parsed = urlparse(settings.database_url)
+
+    if parsed.scheme.startswith("postgresql") or parsed.scheme.startswith("postgres"):
+        connect_args["connect_timeout"] = settings.database_connect_timeout_seconds
+
     return create_engine(
         settings.database_url,
         echo=settings.database_echo,
         pool_pre_ping=settings.database_pool_pre_ping,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
+        connect_args=connect_args,
     )
 
 

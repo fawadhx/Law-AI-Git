@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+import { API_BASE_URL } from "@/lib/runtime-config";
+
 const ADMIN_TOKEN_KEY = "law-ai-admin-access-token";
 const ADMIN_TOKEN_COOKIE = "law_ai_admin_token";
 
@@ -20,33 +21,69 @@ export type AdminMeResponse = {
   admin: AdminSessionUser;
 };
 
+async function readApiError(response: Response, fallback: string): Promise<string> {
+  try {
+    const payload = await response.clone().json();
+    if (payload && typeof payload.detail === "string" && payload.detail.trim()) {
+      const boundaryNote =
+        typeof payload.boundary_note === "string" && payload.boundary_note.trim()
+          ? ` ${payload.boundary_note.trim()}`
+          : "";
+      return `${payload.detail.trim()}${boundaryNote}`.trim();
+    }
+  } catch {
+    // Ignore JSON parsing errors and keep falling back.
+  }
+
+  try {
+    const text = (await response.text()).trim();
+    if (text) {
+      return text;
+    }
+  } catch {
+    // Ignore text parsing errors and use the fallback.
+  }
+
+  return fallback;
+}
+
 export async function loginAdmin(username: string, password: string): Promise<AdminLoginResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/auth/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ username, password }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/auth/admin/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch {
+    throw new Error("Unable to reach the admin service right now. Please try again shortly.");
+  }
 
   if (!response.ok) {
-    throw new Error("Invalid admin credentials.");
+    throw new Error(await readApiError(response, "Invalid admin credentials."));
   }
 
   return response.json();
 }
 
 export async function fetchAdminMe(token: string): Promise<AdminMeResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/auth/admin/me`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/auth/admin/me`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error("Unable to verify the admin session right now. Please sign in again.");
+  }
 
   if (!response.ok) {
-    throw new Error("Admin session is not valid.");
+    throw new Error(await readApiError(response, "Admin session is not valid."));
   }
 
   return response.json();

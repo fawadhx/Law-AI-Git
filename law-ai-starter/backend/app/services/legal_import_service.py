@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from app.core.errors import AppServiceError
 from app.schemas.legal_corpus import (
     FederalImportPipelineResponse,
     IngestionDuplicateCandidate,
@@ -31,6 +32,17 @@ from app.services.legal_ingestion import (
     run_seed_normalization,
 )
 from app.services.legal_ingestion.normalization import normalize_source_document
+
+
+def _get_seed_documents_or_raise() -> list:
+    documents = get_seed_source_documents()
+    if not documents:
+        raise AppServiceError(
+            "No official-source seed documents are configured for this ingestion run yet.",
+            status_code=503,
+            error_code="ingestion_seed_unavailable",
+        )
+    return documents
 
 
 def list_available_ingestion_sources() -> list[IngestionSourceDefinition]:
@@ -63,7 +75,7 @@ def get_admin_review_fields() -> list[ReviewFieldDescriptor]:
 def preview_seed_documents() -> list[LegalCorpusSourcePreview]:
     previews: list[LegalCorpusSourcePreview] = []
     source_label_map = {source.source_slug: source.label for source in get_ingestion_source_registry()}
-    for document in get_seed_source_documents():
+    for document in _get_seed_documents_or_raise():
         previews.append(
             LegalCorpusSourcePreview(
                 source_slug=document.source_slug,
@@ -154,9 +166,16 @@ def get_corpus_sync_plan() -> LegalCorpusSyncPlanResponse:
 
 
 def bootstrap_federal_seed_metadata() -> dict[str, object]:
+    seed_documents = _get_seed_documents_or_raise()
     normalized_bundles: list[NormalizedInstrumentBundle] = [
-        normalize_source_document(document) for document in get_seed_source_documents()
+        normalize_source_document(document) for document in seed_documents
     ]
+    if not normalized_bundles:
+        raise AppServiceError(
+            "No federal source documents could be normalized safely for bootstrap.",
+            status_code=503,
+            error_code="ingestion_normalization_unavailable",
+        )
     persisted = 0
     runs = plan_federal_bootstrap_runs()
 
@@ -169,11 +188,25 @@ def bootstrap_federal_seed_metadata() -> dict[str, object]:
         if upsert_instrument_bundle(bundle):
             bundle_persisted += 1
 
+    status = "ok"
+    detail = (
+        "Seed metadata for federal official-source ingestion was normalized and persisted where database support is available. "
+        "No retrieval publication or full corpus import was attempted."
+    )
+    if persisted == 0 or bundle_persisted == 0:
+        status = "warning"
+        detail = (
+            "Federal seed metadata was normalized, but persistence is only partial or unavailable in the current environment. "
+            "Admin review can still inspect the ingestion foundation, but no public retrieval publication was attempted."
+        )
+
     return {
+        "status": status,
         "planned_run_count": len(runs),
         "recorded_run_count": persisted,
         "normalized_bundle_count": len(normalized_bundles),
         "persisted_bundle_count": bundle_persisted,
+        "detail": detail,
     }
 
 
@@ -265,6 +298,12 @@ def import_federal_seed_foundation() -> FederalImportPipelineResponse:
     run_label = f"federal_seed_import_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     discovery_results = run_seed_discovery(government_level="federal")
     normalization_results = run_seed_normalization(government_level="federal")
+    if not discovery_results:
+        raise AppServiceError(
+            "No federal official-source adapters are available for import right now.",
+            status_code=503,
+            error_code="ingestion_adapter_unavailable",
+        )
     normalized_by_adapter = {result.adapter_key: result for result in normalization_results}
     source_definitions = {source.source_slug: source for source in get_ingestion_source_registry()}
 
@@ -274,6 +313,12 @@ def import_federal_seed_foundation() -> FederalImportPipelineResponse:
     duplicate_bundle_count = 0
     discovered_document_count = sum(len(result.discovered_documents) for result in discovery_results)
     normalized_bundle_count = sum(len(result.bundles) for result in normalization_results)
+    if discovered_document_count == 0 or normalized_bundle_count == 0:
+        raise AppServiceError(
+            "The federal ingestion foundation could not discover or normalize any official-source documents safely.",
+            status_code=503,
+            error_code="ingestion_discovery_empty",
+        )
 
     for discovery in discovery_results:
         normalization = normalized_by_adapter.get(discovery.adapter_key)
@@ -392,8 +437,27 @@ def import_federal_seed_foundation() -> FederalImportPipelineResponse:
         if record_ingestion_run(run):
             recorded_runs += 1
 
+    response_status = "ok"
+    workflow_note = (
+        "This first-pass federal import only ingests a small official-source seed set, preserves source provenance, "
+        "skips exact version duplicates, and leaves all imported records in an admin-review state."
+    )
+    if imported_bundle_count == 0 and duplicate_bundle_count == 0:
+        response_status = "warning"
+        workflow_note = (
+            "The federal import run completed safely but did not persist any new bundles. "
+            "Check source availability, persistence readiness, and admin review prerequisites before retrying. "
+            "No public legal-information publication was attempted."
+        )
+    elif recorded_runs == 0:
+        response_status = "warning"
+        workflow_note = (
+            "Federal source bundles were evaluated, but ingestion-run persistence is unavailable in the current environment. "
+            "Source provenance remains part of the response, and no public retrieval publication was attempted."
+        )
+
     return FederalImportPipelineResponse(
-        status="ok",
+        status=response_status,
         run_label=run_label,
         discovered_document_count=discovered_document_count,
         normalized_bundle_count=normalized_bundle_count,
@@ -401,8 +465,5 @@ def import_federal_seed_foundation() -> FederalImportPipelineResponse:
         duplicate_bundle_count=duplicate_bundle_count,
         runs_recorded=recorded_runs,
         items=items,
-        workflow_note=(
-            "This first-pass federal import only ingests a small official-source seed set, preserves source provenance, "
-            "skips exact version duplicates, and leaves all imported records in an admin-review state."
-        ),
+        workflow_note=workflow_note,
     )

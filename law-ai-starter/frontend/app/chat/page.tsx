@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode } from "react";
+import { API_BASE_URL, FRONTEND_APP_ENV } from "@/lib/runtime-config";
 
 type Citation = {
   title: string;
@@ -42,9 +43,6 @@ type Message = {
   category?: ChatCategory;
   confidence?: ChatConfidence;
 };
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
 const INITIAL_ASSISTANT_MESSAGE =
   "Ask a legal-information question to receive a prototype response based on the current structured legal-source records.";
@@ -196,6 +194,30 @@ function getShortExcerpt(text?: string, maxLength: number = 140): string {
 function formatScore(score?: number): string {
   if (typeof score !== "number" || Number.isNaN(score)) return "--";
   return score.toFixed(1);
+}
+
+async function readApiError(response: Response, fallback: string): Promise<string> {
+  try {
+    const payload = await response.clone().json();
+    if (payload && typeof payload.detail === "string" && payload.detail.trim()) {
+      const boundaryNote =
+        typeof payload.boundary_note === "string" && payload.boundary_note.trim()
+          ? ` ${payload.boundary_note.trim()}`
+          : "";
+      return `${payload.detail.trim()}${boundaryNote}`.trim();
+    }
+  } catch {
+    // Ignore JSON parsing errors and continue to text fallback.
+  }
+
+  try {
+    const text = (await response.text()).trim();
+    if (text) return text;
+  } catch {
+    // Ignore text parsing errors and use the fallback.
+  }
+
+  return fallback;
 }
 
 function getAnswerStatusConfig(confidence?: ChatConfidence): {
@@ -598,20 +620,33 @@ export default function ChatPage() {
 
     setLoading(true);
     setError("");
+    setLatestResponse(null);
 
     setMessages((prev) => [...prev, { role: "user", content: trimmedQuestion }]);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/chat/query`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ question: trimmedQuestion }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE_URL}/api/v1/chat/query`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ question: trimmedQuestion }),
+        });
+      } catch {
+        throw new Error(
+          "Law AI could not reach the legal-information service right now. Please try again with a narrower factual question in a moment."
+        );
+      }
 
       if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
+        throw new Error(
+          await readApiError(
+            response,
+            "Law AI could not complete this legal-information request safely right now."
+          )
+        );
       }
 
       const result: ChatQueryResponse = await response.json();
@@ -652,6 +687,22 @@ export default function ChatPage() {
   }
 
   const questionLength = question.trim().length;
+  const latestWarnings = useMemo(() => {
+    if (!latestResponse) return [];
+
+    const warnings: string[] = [];
+    if (latestResponse.confidence.level === "low") {
+      warnings.push(
+        "This result is only a tentative legal-information match. Treat it cautiously and verify the cited law text before relying on it."
+      );
+    }
+    if (latestResponse.citations.length === 0) {
+      warnings.push(
+        "No source citations were returned for this response, so the answer should be treated as informational guidance only."
+      );
+    }
+    return warnings;
+  }, [latestResponse]);
 
   return (
     <main style={pageWrap}>
@@ -676,7 +727,7 @@ export default function ChatPage() {
                     color: "#dfe7ff",
                   }}
                 >
-                  Prototype dataset
+                  {FRONTEND_APP_ENV === "production" ? "Production mode" : "Prototype dataset"}
                 </SmallPill>
                 <SmallPill
                   style={{
@@ -949,6 +1000,26 @@ export default function ChatPage() {
                       <div style={{ fontSize: "18px", fontWeight: 800 }}>
                         {latestResponse.why_matched.length}
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {latestWarnings.length > 0 && (
+                  <div
+                    style={{
+                      ...panelInnerCardStyle,
+                      marginTop: "13px",
+                      border: "1px solid rgba(250, 204, 21, 0.22)",
+                      background: "rgba(250, 204, 21, 0.08)",
+                    }}
+                  >
+                    <div style={sectionLabelStyle}>Caution</div>
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      {latestWarnings.map((warning) => (
+                        <div key={warning} style={mutedBodyStyle}>
+                          • {warning}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

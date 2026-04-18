@@ -4,9 +4,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Law AI Backend"
+    app_version: str = "0.1.0"
     app_env: str = "development"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
+    app_public_base_url: str | None = None
+    app_log_level: str = "INFO"
+    app_log_json: bool = False
+    app_request_logging_enabled: bool = True
+    app_readiness_requires_database: bool = False
+    app_readiness_requires_openai: bool = False
     allowed_origins: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
@@ -16,6 +23,9 @@ class Settings(BaseSettings):
     database_url: str | None = None
     database_echo: bool = False
     database_pool_pre_ping: bool = True
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    database_connect_timeout_seconds: int = 5
     database_auto_create_tables: bool = False
     database_bootstrap_legal_sources: bool = False
     database_bootstrap_force_refresh: bool = False
@@ -63,6 +73,32 @@ class Settings(BaseSettings):
             return [item for item in parts if item]
 
         return value
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() == "production"
+
+    @property
+    def admin_auth_uses_default_secret(self) -> bool:
+        return self.admin_auth_secret_key == "change-this-law-ai-admin-secret"
+
+    @property
+    def admin_auth_uses_default_password(self) -> bool:
+        return self.admin_auth_password == "admin123" and not self.admin_auth_password_sha256
+
+    def runtime_warnings(self) -> list[str]:
+        warnings: list[str] = []
+
+        if self.is_production and self.admin_auth_uses_default_secret:
+            warnings.append("Admin auth is still using the default secret key.")
+        if self.is_production and self.admin_auth_uses_default_password:
+            warnings.append("Admin auth is still using the default password.")
+        if not self.allowed_origins:
+            warnings.append("No frontend origins are configured in ALLOWED_ORIGINS.")
+        if self.app_readiness_requires_openai and not self.openai_api_key:
+            warnings.append("OpenAI readiness is required but OPENAI_API_KEY is not configured.")
+
+        return warnings
 
 
 settings = Settings()
