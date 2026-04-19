@@ -38,6 +38,30 @@ def test_admin_sources_validate_allows_authenticated_admin(client, admin_headers
     assert payload["readiness_score"] >= 0
 
 
+def test_admin_sources_expose_structured_metadata(client, admin_headers):
+    response = client.get("/api/v1/admin/sources", headers=admin_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    item = next(record for record in payload["items"] if record["id"] == "crpc-167")
+    assert item["law_type"] == "Act"
+    assert item["government_level"] == "federal"
+    assert item["source_status"] == "curated_catalog"
+    assert item["official_citation"] == "Act V of 1898"
+
+
+def test_admin_sources_expose_available_provinces_and_provincial_records(client, admin_headers):
+    response = client.get("/api/v1/admin/sources", headers=admin_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "Punjab" in payload["available_provinces"]
+    provincial_item = next(record for record in payload["items"] if record["id"] == "prov-punjab-catalog")
+    assert provincial_item["government_level"] == "provincial"
+    assert provincial_item["jurisdiction_type"] == "provincial"
+    assert provincial_item["province"] == "Punjab"
+
+
 def test_admin_workspace_save_and_stage_produce_audit_entries(client, admin_headers):
     save_response = client.post(
         "/api/v1/admin/workspace/drafts/save",

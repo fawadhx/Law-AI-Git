@@ -99,6 +99,11 @@ def _known_groups(records: list[LegalSourceRecord] | None = None) -> list[str]:
     return sorted({record.offence_group for record in active if record.offence_group})
 
 
+def _known_provinces(records: list[LegalSourceRecord] | None = None) -> list[str]:
+    active = records if records is not None else _active_records()
+    return sorted({record.province for record in active if record.province})
+
+
 def _section_sort_key(value: str) -> tuple[int, str]:
     digits = "".join(character for character in value if character.isdigit())
     if digits:
@@ -173,7 +178,17 @@ def _draft_to_live_record(payload: AdminSourceDraftInput, record_id: str) -> Leg
         summary=payload.summary,
         excerpt=payload.excerpt,
         citation_label=payload.citation_label,
+        country=payload.country,
         jurisdiction=payload.jurisdiction,
+        jurisdiction_type=payload.jurisdiction_type,
+        government_level=payload.government_level,
+        province=payload.province or None,
+        law_category=payload.law_category or None,
+        law_type=payload.law_type or None,
+        source_status=payload.source_status or None,
+        official_citation=payload.official_citation or None,
+        enactment_year=payload.enactment_year,
+        effective_year=payload.effective_year,
         tags=list(payload.tags),
         aliases=list(payload.aliases),
         keywords=list(payload.keywords),
@@ -181,6 +196,10 @@ def _draft_to_live_record(payload: AdminSourceDraftInput, record_id: str) -> Leg
         offence_group=payload.offence_group,
         punishment_summary=payload.punishment_summary,
         provision_kind=payload.provision_kind,
+        source_url=payload.source_url or None,
+        source_last_verified=payload.source_last_verified or None,
+        amendment_notes=payload.amendment_notes or None,
+        source_trust_level=payload.source_trust_level or None,
     )
 
 
@@ -198,13 +217,16 @@ def _upsert_live_record(payload: AdminSourceDraftInput, target_record_id: str | 
 
 
 def _build_admin_note(record: LegalSourceRecord | AdminSourceDraftInput) -> str:
+    trust_note = f" Source trust: {record.source_trust_level}." if getattr(record, "source_trust_level", None) else ""
+    if record.provision_kind == "source_reference":
+        return "Province-aware source-reference record used to route users and internal retrieval toward the correct official jurisdiction source." + trust_note
     if record.provision_kind == "procedure":
-        return "Procedure-oriented record linked to police, FIR, arrest, or reporting flow."
+        return "Procedure-oriented record linked to police, FIR, arrest, or reporting flow." + trust_note
     if record.provision_kind == "punishment":
-        return "Punishment section that pairs with a core offence or conduct definition."
+        return "Punishment section that pairs with a core offence or conduct definition." + trust_note
     if record.related_sections:
-        return "Structured record linked to companion sections for overlap-aware answers."
-    return "Core legal source record available for retrieval and answer composition."
+        return "Structured record linked to companion sections for overlap-aware answers." + trust_note
+    return "Core legal source record available for retrieval and answer composition." + trust_note
 
 
 def _build_source_record(record: LegalSourceRecord) -> AdminSourceRecord:
@@ -216,7 +238,15 @@ def _build_source_record(record: LegalSourceRecord) -> AdminSourceRecord:
         section_number=record.section_number,
         section_title=record.section_title,
         summary=record.summary,
+        country=record.country,
         jurisdiction=record.jurisdiction,
+        jurisdiction_type=record.jurisdiction_type,
+        government_level=record.government_level,
+        province=record.province,
+        law_category=record.law_category,
+        law_type=record.law_type,
+        official_citation=record.official_citation,
+        source_status=record.source_status,
         provision_kind=record.provision_kind,
         offence_group=record.offence_group,
         related_sections=record.related_sections,
@@ -332,6 +362,13 @@ def _detail_record(
         aliases=record.aliases,
         keywords=record.keywords,
         searchable_terms=deduped_terms[:18],
+        enactment_year=record.enactment_year,
+        effective_year=record.effective_year,
+        source_url=record.source_url,
+        source_last_verified=record.source_last_verified,
+        source_trust_level=record.source_trust_level,
+        amendment_notes=record.amendment_notes,
+        provenance=record.provenance,
         related_record_count=len(companion_records),
         same_group_record_count=len(same_group_records),
         same_law_record_count=len(same_law_records),
@@ -355,7 +392,17 @@ def _normalize_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftInput:
         summary=payload.summary.strip(),
         excerpt=payload.excerpt.strip(),
         citation_label=citation_label,
+        country=payload.country.strip() or "Pakistan",
         jurisdiction=payload.jurisdiction.strip() or "Pakistan",
+        jurisdiction_type=payload.jurisdiction_type.strip() or payload.government_level.strip() or "federal",
+        government_level=payload.government_level.strip() or "federal",
+        province=payload.province.strip(),
+        law_category=payload.law_category.strip(),
+        law_type=payload.law_type.strip(),
+        source_status=payload.source_status.strip(),
+        official_citation=payload.official_citation.strip(),
+        enactment_year=payload.enactment_year,
+        effective_year=payload.effective_year,
         tags=_clean_list(payload.tags),
         aliases=_clean_list(payload.aliases),
         keywords=_clean_list(payload.keywords),
@@ -363,6 +410,10 @@ def _normalize_draft(payload: AdminSourceDraftInput) -> AdminSourceDraftInput:
         offence_group=(payload.offence_group or "").strip() or None,
         punishment_summary=(payload.punishment_summary or "").strip() or None,
         provision_kind=payload.provision_kind.strip() or "general",
+        source_url=payload.source_url.strip(),
+        source_last_verified=payload.source_last_verified.strip(),
+        amendment_notes=payload.amendment_notes.strip(),
+        source_trust_level=payload.source_trust_level.strip(),
     )
 
 
@@ -388,6 +439,10 @@ def _build_draft_preview(payload: AdminSourceDraftInput) -> AdminSourceDraftPrev
         payload.section_number,
         payload.section_title,
         payload.law_name,
+        payload.province,
+        payload.law_category,
+        payload.law_type,
+        payload.official_citation,
         payload.offence_group or "",
     ])
 
@@ -419,11 +474,15 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
     if not payload.law_name:
         add_issue("law_name", "error", "Law name is required.")
     elif payload.law_name not in _known_laws(active_records):
-        add_issue("law_name", "warning", "Law name is not in the current prototype catalog, so linked-section checks will be limited.")
+        add_issue("law_name", "warning", "Law name is not in the current catalog, so linked-section checks will be limited.")
     if not payload.section_number:
         add_issue("section_number", "error", "Section number is required.")
     if not payload.section_title:
         add_issue("section_title", "error", "Section title is required.")
+    if payload.government_level == "provincial" and not payload.province:
+        add_issue("province", "warning", "Province is missing for a provincial record.")
+    if not payload.law_type:
+        add_issue("law_type", "warning", "Law type is missing. Add Act, Ordinance, Rule, or similar for stronger catalog metadata.")
     if not payload.summary:
         add_issue("summary", "error", "Summary is required.")
     elif len(payload.summary) < 50:
@@ -434,7 +493,7 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
         add_issue("excerpt", "warning", "Excerpt looks short for a citation-first answer experience.")
 
     if payload.provision_kind not in _known_kinds(active_records):
-        add_issue("provision_kind", "warning", "Provision kind is not in the current prototype set.")
+        add_issue("provision_kind", "warning", "Provision kind is not in the current configured set.")
 
     if payload.provision_kind == "punishment" and not payload.punishment_summary:
         add_issue("punishment_summary", "warning", "Punishment records should usually include a punishment summary.")
@@ -448,6 +507,12 @@ def _validate_draft(payload: AdminSourceDraftInput) -> tuple[list[AdminDraftVali
         add_issue("aliases", "warning", "No aliases added yet. Real-world user wording may be harder to match.")
     if len(payload.keywords) == 0:
         add_issue("keywords", "warning", "No keywords added yet. Retrieval quality may be weaker.")
+    if payload.government_level == "provincial" and payload.province and payload.province not in _known_provinces(active_records):
+        add_issue("province", "warning", "Province is not yet in the active source catalog, so province-linked comparisons will be limited.")
+    if not payload.official_citation:
+        add_issue("official_citation", "warning", "Official citation is missing. This makes scaled federal catalog maintenance harder.")
+    if not payload.source_status:
+        add_issue("source_status", "warning", "Source status is missing. Use a normalized status such as curated_catalog.")
 
     related_section_check = _related_section_check(payload, active_records)
     if related_section_check.missing:
@@ -548,12 +613,12 @@ def get_admin_summary() -> AdminSummaryResponse:
             AdminStat(
                 value=snapshot.source_label,
                 title="Active catalog source",
-                description="Shows whether admin is reading from the persisted database catalog or the in-memory prototype fallback.",
+                description="Shows whether admin is reading from the persisted database catalog or the in-memory fallback catalog.",
             ),
             AdminStat(
                 value=str(len(OFFICER_AUTHORITY_DATA)),
                 title="Authority mappings",
-                description="Officer-rank summaries and authority notes currently available to the prototype authority layer.",
+                description="Officer-rank summaries and authority notes currently available to the authority-reference layer.",
             ),
         ],
         control_areas=[
@@ -567,7 +632,7 @@ def get_admin_summary() -> AdminSummaryResponse:
             ),
             AdminRoadmapItem(
                 title="Draft editor",
-                text="Edit a working draft safely, validate fields, and preview readiness without changing the live prototype dataset.",
+                text="Edit a working draft safely, validate fields, and preview readiness without changing the live source catalog.",
             ),
             AdminRoadmapItem(
                 title="Shared active source store",
@@ -619,7 +684,7 @@ def get_admin_summary() -> AdminSummaryResponse:
                 title="Coverage status",
                 content=(
                     f"The active catalog spans {len(law_breakdown)} law families, {len(group_breakdown)} provision groups, and {punishment_count} punishment-oriented sections, "
-                    "which is enough for a credible prototype but not yet a full legal corpus."
+                    "which provides a useful operational baseline but not yet a full legal corpus."
                 ),
             ),
         ],
@@ -656,8 +721,8 @@ def get_admin_summary() -> AdminSummaryResponse:
             ),
         ],
         admin_boundary=(
-            "This admin area is still a prototype control surface. It can inspect the legal source catalog, open detailed source views, validate working drafts, stage prototype publish actions, and now prefer persisted database records when they exist. "
-            "It also exposes retrieval-metadata readiness for the future vector-search layer, but authentication, durable approvals, uploads, real embedding generation, and production-grade audit logging must be added before it is treated as a real admin system."
+            "This admin area is an operational control surface for source review, validation, staged publishing, and retrieval-readiness checks. It can inspect the legal source catalog, open detailed source views, validate working drafts, stage controlled publish actions, and prefer persisted database records when they exist. "
+            "It also exposes retrieval-metadata readiness for the future vector-search layer, but durable approvals, uploads, and fully automated publication workflows still require continued expansion."
         ),
         catalog_source=_build_catalog_source_info(),
     )
@@ -685,10 +750,11 @@ def get_admin_source_catalog() -> AdminSourceCatalogResponse:
         catalog_source=_build_catalog_source_info(),
         items=items,
         available_laws=sorted(law_breakdown.keys()),
+        available_provinces=_known_provinces(active_records),
         available_groups=sorted(group_breakdown.keys()),
         available_kinds=sorted({record.provision_kind for record in active_records}),
         workflow_note=(
-            "This catalog is still read-only, but admin can now prefer persisted database records when PostgreSQL is ready and seeded, while still falling back safely to the in-memory prototype catalog. "
+            "This catalog is still read-only, but admin can now prefer persisted database records when PostgreSQL is ready and seeded, while still falling back safely to the in-memory catalog. "
             "The detail view, draft validation workflow, and session publish tools remain available on top of that active source."
         ),
     )
@@ -715,7 +781,7 @@ def get_admin_source_detail(source_id: str) -> AdminSourceDetailResponse | None:
         same_law_records=same_law_records,
         workflow_note=(
             "Use this detail view to validate excerpt quality, searchable wording, and section pairings. "
-            "When PostgreSQL is seeded, this panel now reads from the persisted source catalog instead of only the in-memory prototype list."
+            "When PostgreSQL is seeded, this panel now reads from the persisted source catalog instead of only the in-memory list."
         ),
     )
 
@@ -955,13 +1021,17 @@ def preview_admin_ingestion(payload: AdminIngestionPreviewRequest) -> AdminInges
         excerpt=raw_text[:5000],
         citation_label=citation_label,
         jurisdiction=payload.jurisdiction.strip() or "Pakistan",
+        government_level="federal",
+        law_type="",
+        source_status="",
+        official_citation=payload.citation_hint.strip(),
         provision_kind=_infer_provision_kind_from_text(raw_text),
         offence_group=_infer_offence_group_from_text(raw_text),
         punishment_summary=_extract_punishment_summary_from_text(raw_text),
-        tags_text="",
-        aliases_text="",
-        keywords_text=_extract_keywords_from_text(raw_text),
-        related_sections_text=_extract_related_sections_from_text(raw_text, extracted_section_number),
+        tags=[],
+        aliases=[],
+        keywords=_extract_keywords_from_text(raw_text),
+        related_sections=_extract_related_sections_from_text(raw_text, extracted_section_number),
     )
     normalized = _normalize_draft(preview_draft)
     validation = validate_admin_source_draft(normalized)
@@ -1087,7 +1157,7 @@ def create_admin_source_record(payload: AdminSourceDraftInput) -> AdminSourceCre
         workflow_note=(
             "This is the first real admin create step for Phase 6. "
             "When the database is ready, the new legal source record is now persisted with retrieval metadata and marked pending for future embedding generation. "
-            "If database persistence is unavailable, the save falls back safely to the in-memory prototype catalog."
+            "If database persistence is unavailable, the save falls back safely to the in-memory catalog."
         ),
     )
 
@@ -1258,6 +1328,12 @@ FIELD_LABELS = {
     "excerpt": "Excerpt",
     "citation_label": "Citation label",
     "jurisdiction": "Jurisdiction",
+    "government_level": "Government level",
+    "law_type": "Law type",
+    "source_status": "Source status",
+    "official_citation": "Official citation",
+    "enactment_year": "Enactment year",
+    "effective_year": "Effective year",
     "provision_kind": "Provision kind",
     "offence_group": "Offence group",
     "punishment_summary": "Punishment summary",
@@ -1265,6 +1341,10 @@ FIELD_LABELS = {
     "aliases": "Aliases",
     "keywords": "Keywords",
     "related_sections": "Related sections",
+    "source_url": "Source URL",
+    "source_last_verified": "Source last verified",
+    "amendment_notes": "Amendment notes",
+    "source_trust_level": "Source trust level",
 }
 
 REQUIRED_REVIEW_FIELDS = {
@@ -1277,12 +1357,12 @@ REQUIRED_REVIEW_FIELDS = {
 }
 
 
-def _stringify_change_value(value: str | list[str] | None) -> str:
+def _stringify_change_value(value: object) -> str:
     if value is None:
         return ""
     if isinstance(value, list):
         return ", ".join(value)
-    return value
+    return str(value)
 
 
 def _record_to_draft(record: LegalSourceRecord) -> AdminSourceDraftInput:
@@ -1295,7 +1375,17 @@ def _record_to_draft(record: LegalSourceRecord) -> AdminSourceDraftInput:
         summary=record.summary,
         excerpt=record.excerpt,
         citation_label=record.citation_label,
+        country=record.country,
         jurisdiction=record.jurisdiction,
+        jurisdiction_type=record.jurisdiction_type,
+        government_level=record.government_level,
+        province=record.province or "",
+        law_category=record.law_category or "",
+        law_type=record.law_type or "",
+        source_status=record.source_status or "",
+        official_citation=record.official_citation or "",
+        enactment_year=record.enactment_year,
+        effective_year=record.effective_year,
         tags=list(record.tags),
         aliases=list(record.aliases),
         keywords=list(record.keywords),
@@ -1303,6 +1393,10 @@ def _record_to_draft(record: LegalSourceRecord) -> AdminSourceDraftInput:
         offence_group=record.offence_group,
         punishment_summary=record.punishment_summary,
         provision_kind=record.provision_kind,
+        source_url=record.source_url or "",
+        source_last_verified=record.source_last_verified or "",
+        amendment_notes=record.amendment_notes or "",
+        source_trust_level=record.source_trust_level or "",
     )
 
 
@@ -1315,7 +1409,17 @@ def _empty_draft_baseline() -> AdminSourceDraftInput:
         summary="",
         excerpt="",
         citation_label="",
+        country="Pakistan",
         jurisdiction="Pakistan",
+        jurisdiction_type="federal",
+        government_level="federal",
+        province="",
+        law_category="",
+        law_type="",
+        source_status="",
+        official_citation="",
+        enactment_year=None,
+        effective_year=None,
         tags=[],
         aliases=[],
         keywords=[],
@@ -1323,6 +1427,10 @@ def _empty_draft_baseline() -> AdminSourceDraftInput:
         offence_group=None,
         punishment_summary=None,
         provision_kind="general",
+        source_url="",
+        source_last_verified="",
+        amendment_notes="",
+        source_trust_level="",
     )
 
 
@@ -1414,7 +1522,7 @@ def _build_review_checklist(
             detail=(
                 "; ".join(retrieval_warnings)
                 if retrieval_warnings
-                else "Tags, aliases, and keywords look usable for prototype retrieval and admin filtering."
+                else "Tags, aliases, and keywords look usable for retrieval and admin filtering."
             ),
         ),
         AdminReviewChecklistItem(
@@ -1448,7 +1556,7 @@ def _build_review_checklist(
             detail=(
                 "; ".join(context_warnings)
                 if context_warnings
-                else "The draft fits the current prototype catalog context and can be reviewed against same-law records."
+                else "The draft fits the current catalog context and can be reviewed against same-law records."
             ),
         ),
         AdminReviewChecklistItem(
@@ -1509,7 +1617,7 @@ def review_admin_source_draft(payload: AdminSourceDraftInput) -> AdminSourceDraf
         changed_fields=[item for item in changed_fields if item.changed],
         checklist=checklist,
         workflow_note=(
-            "This review gate is still prototype-only. It compares the working draft against the active live record from the current admin source store, surfaces blockers and review warnings, and prepares the draft for a later real approval or publish workflow without persisting any change yet."
+            "This review gate compares the working draft against the active live record from the current admin source store, surfaces blockers and review warnings, and prepares the draft for a later approval or publish workflow without persisting any change yet."
         ),
     )
 
@@ -1654,7 +1762,7 @@ def _workspace_detail_response(entry: dict) -> AdminWorkspaceDraftDetailResponse
         review=entry["review"],
         publish_preview=entry["publish_preview"],
         workflow_note=(
-            "Workspace drafts are stored only in prototype server memory for this session. "
+            "Workspace drafts are stored only in server memory for this session. "
             "They let you save draft snapshots, reopen them, and prepare staged publish packages without mutating the live catalog."
         ),
     )
@@ -1686,7 +1794,7 @@ def get_admin_workspace() -> AdminWorkspaceResponse:
         drafts=drafts,
         publish_queue=publish_queue,
         workflow_note=(
-            "This workspace shelf is still prototype-only and resets when the server restarts. "
+            "This workspace shelf is session-only and resets when the server restarts. "
             "Use it to save draft snapshots, reopen them for editing, and stage publish packages for review before real persistence exists."
         ),
     )
@@ -1816,7 +1924,7 @@ def get_admin_activity_feed() -> AdminActivityFeedResponse:
         latest_publish_label=latest_publish.citation_label if latest_publish else None,
         items=items,
         workflow_note=(
-            "This activity feed now reads from the admin audit foundation when database persistence is available, with an in-memory fallback for local prototype mode. "
+            "This activity feed now reads from the admin audit foundation when database persistence is available, with an in-memory fallback for local development mode. "
             "It captures key admin actions such as login, draft validation, workspace staging, source changes, publish actions, and related control events."
         ),
     )
@@ -1826,7 +1934,7 @@ def get_admin_retrieval_readiness() -> AdminRetrievalReadinessResponse:
     audit = get_persisted_retrieval_readiness_audit()
     return AdminRetrievalReadinessResponse(
         active_source=str(audit.get("active_source", "in_memory")),
-        source_label=str(audit.get("source_label", "In-memory prototype catalog")),
+        source_label=str(audit.get("source_label", "In-memory fallback catalog")),
         database_ready=bool(audit.get("database_ready", False)),
         foundation_stage=str(audit.get("foundation_stage", "in_memory_only")),
         persisted_record_count=int(audit.get("persisted_record_count", 0) or 0),
@@ -1851,7 +1959,7 @@ def refresh_admin_retrieval_metadata(payload: AdminRetrievalRefreshRequest) -> A
     return AdminRetrievalRefreshResponse(
         refresh_applied=bool(result.get("refresh_applied", False)),
         active_source=str(result.get("active_source", "in_memory")),
-        source_label=str(result.get("source_label", "In-memory prototype catalog")),
+        source_label=str(result.get("source_label", "In-memory fallback catalog")),
         refreshed_count=int(result.get("refreshed_count", 0) or 0),
         unchanged_count=int(result.get("unchanged_count", 0) or 0),
         pending_marked_count=int(result.get("pending_marked_count", 0) or 0),
@@ -1942,7 +2050,7 @@ def run_admin_retrieval_probe(payload: AdminRetrievalProbeRequest) -> AdminRetri
     return AdminRetrievalProbeResponse(
         query=str(probe.get("query", payload.query)),
         active_source=str(probe.get("active_source", "in_memory")),
-        source_label=str(probe.get("source_label", "In-memory prototype catalog")),
+        source_label=str(probe.get("source_label", "In-memory fallback catalog")),
         vector_retrieval_active=bool(probe.get("vector_retrieval_active", False)),
         vector_query_top_k=int(probe.get("vector_query_top_k", 0) or 0),
         keyword_candidate_count=int(probe.get("keyword_candidate_count", 0) or 0),

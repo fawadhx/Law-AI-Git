@@ -18,6 +18,15 @@ from app.services.legal_source_store import (
     get_legal_source_store_diagnostics,
     get_record_searchable_text,
 )
+from app.services.legal_retrieval_ranking import (
+    RetrievalScoreComponent,
+    category_components,
+    components_for_relevance_anchor,
+    jurisdiction_components,
+    metadata_quality_components,
+    record_type_components,
+    sum_components,
+)
 
 
 def _is_vector_retrieval_active(diagnostics: dict[str, object]) -> bool:
@@ -42,10 +51,10 @@ def get_retrieval_source_status() -> dict[str, object]:
 
     if corpus_record_count > 0:
         active_source = "hybrid"
-        source_label = "Hybrid corpus + prototype retrieval"
+        source_label = "Hybrid corpus + source catalog retrieval"
         detail = (
             f"{diagnostics['detail']} Reviewed corpus sections available: {corpus_record_count}. "
-            "Structured corpus records are merged into retrieval and take precedence over duplicate prototype sections."
+            "Structured corpus records are merged into retrieval and take precedence over duplicate legacy catalog sections."
         ).strip()
 
     return {
@@ -78,6 +87,12 @@ def get_retrieval_source_status() -> dict[str, object]:
 
 
 VECTOR_SIMILARITY_MINIMUM = 0.18
+PROVINCE_QUERY_HINTS: dict[str, tuple[str, ...]] = {
+    "Punjab": ("punjab",),
+    "Sindh": ("sindh",),
+    "Khyber Pakhtunkhwa": ("kpk", "kp", "khyber pakhtunkhwa"),
+    "Balochistan": ("balochistan",),
+}
 
 
 def _can_run_vector_retrieval() -> bool:
@@ -91,6 +106,14 @@ def _record_dedup_key(record: LegalSourceRecord) -> tuple[str, str, str]:
         normalize_text(record.section_number),
         normalize_text(record.section_title),
     )
+
+
+def detect_province_hint(query: str) -> str | None:
+    query_lower = normalize_text(query)
+    for province, hints in PROVINCE_QUERY_HINTS.items():
+        if any(hint in query_lower for hint in hints):
+            return province
+    return None
 
 
 def _get_active_retrieval_records() -> list[LegalSourceRecord]:
@@ -661,6 +684,42 @@ OFFICER_AUTHORITY_HINTS = ["sho", "asi", "inspector", "sub inspector", "officer 
 
 
 PRIMARY_KINDS = {"definition", "offence", "aggravated_offence", "general"}
+RETRIEVAL_STOPWORDS = {
+    "a",
+    "about",
+    "after",
+    "and",
+    "are",
+    "can",
+    "do",
+    "does",
+    "for",
+    "from",
+    "have",
+    "how",
+    "i",
+    "if",
+    "in",
+    "is",
+    "it",
+    "law",
+    "legal",
+    "me",
+    "my",
+    "of",
+    "on",
+    "or",
+    "please",
+    "tell",
+    "the",
+    "to",
+    "under",
+    "what",
+    "when",
+    "where",
+    "who",
+    "with",
+}
 
 
 def normalize_text(value: str) -> str:
@@ -672,6 +731,17 @@ def normalize_text(value: str) -> str:
 
 def tokenize(value: str) -> list[str]:
     return [token for token in normalize_text(value).split(" ") if token]
+
+
+def is_meaningful_query_term(term: str) -> bool:
+    normalized = normalize_text(term)
+    if not normalized:
+        return False
+    if " " in normalized:
+        return True
+    if normalized in RETRIEVAL_STOPWORDS:
+        return False
+    return len(normalized) >= 3 or normalized.isdigit()
 
 
 def extract_section_references(query: str) -> list[tuple[str | None, str]]:
@@ -750,6 +820,7 @@ def expand_query_terms(query: str) -> list[str]:
 
 def build_query_signals(query: str) -> dict[str, bool]:
     query_lower = normalize_text(query)
+    province_hint = detect_province_hint(query)
     return {
         "punishment": any(word in query_lower for word in PUNISHMENT_HINTS),
         "online": any(phrase in query_lower for phrase in ONLINE_HINTS),
@@ -781,6 +852,8 @@ def build_query_signals(query: str) -> dict[str, bool]:
         "mentions_woman": any(word in query_lower for word in ["woman", "women", "girl", "female", "wife", "lady"]),
         "mentions_photo": any(word in query_lower for word in ["photo", "photos", "video", "picture", "images"]),
         "section_lookup": "section " in query_lower or "u/s" in query_lower or query_lower.startswith(("ppc ", "peca ", "crpc ")),
+        "provincial": province_hint is not None or "provincial" in query_lower or "province" in query_lower,
+        "province_hint": bool(province_hint),
     }
 
 
@@ -823,13 +896,45 @@ def record_matches_requested_section(query: str, record: LegalSourceRecord) -> b
     return False
 
 
+def build_structured_score_components(query: str, record: LegalSourceRecord) -> list[RetrievalScoreComponent]:
+    signals = build_query_signals(query)
+    intent = build_query_intent(query)
+    province_hint = detect_province_hint(query)
+    return [
+        *jurisdiction_components(
+            record=record,
+            province_hint=province_hint,
+            provincial_query=signals["provincial"],
+        ),
+        *record_type_components(record=record, signals=signals, intent=intent),
+        *category_components(record=record, signals=signals),
+        *metadata_quality_components(record),
+    ]
+
+
+def build_applicable_score_components(
+    query: str,
+    record: LegalSourceRecord,
+    *,
+    base_score: int,
+) -> list[RetrievalScoreComponent]:
+    has_relevance_anchor = base_score > 0 or record_matches_requested_section(query, record)
+    return components_for_relevance_anchor(
+        build_structured_score_components(query, record),
+        has_relevance_anchor=has_relevance_anchor,
+    )
+
+
 def sort_key_for_record(
     item: tuple[int, LegalSourceRecord],
     query: str,
-) -> tuple[int, int, int, str, str]:
+) -> tuple[int, int, int, int, str, str]:
     score, record = item
     intent = build_query_intent(query)
     exact_match = 1 if record_matches_requested_section(query, record) else 0
+    source_quality = 1 if record.source_trust_level or record.source_url else 0
+    province_hint = detect_province_hint(query)
+    jurisdiction_match = 1 if province_hint and record.province == province_hint else 0
     if intent["section_lookup"]:
         priority = 2 if exact_match else (1 if record.provision_kind == "punishment" else 0)
     elif intent["punishment_focus"]:
@@ -837,7 +942,7 @@ def sort_key_for_record(
     else:
         priority = 2 if is_primary_record(record) else (1 if record.provision_kind == "punishment" else 0)
 
-    return (score, exact_match, priority, record.law_name, record.section_number)
+    return (score, exact_match, jurisdiction_match, priority + source_quality, record.law_name, record.section_number)
 
 
 def citation_reference(record: LegalSourceRecord) -> str:
@@ -900,7 +1005,9 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
         ]
     )
 
-    for term in query_terms:
+    meaningful_terms = [term for term in query_terms if is_meaningful_query_term(term)]
+
+    for term in meaningful_terms:
         if " " in term:
             if term in searchable_text:
                 score += 4
@@ -1175,7 +1282,59 @@ def score_record(query: str, record: LegalSourceRecord) -> int:
     if signals["punishment"] and not intent["section_lookup"] and is_primary_record(record) and record.punishment_summary:
         score += 2
 
+    base_score = score
+    score += sum_components(
+        build_applicable_score_components(query, record, base_score=base_score)
+    )
+
+    if intent["section_lookup"] and not record_matches_requested_section(query, record):
+        score -= 3
+
+    if not meaningful_terms and not intent["section_lookup"]:
+        score -= 4
+
     return score
+
+
+def select_best_excerpt(query: str, record: LegalSourceRecord, max_chars: int = 420) -> str:
+    """Pick a compact evidence excerpt that overlaps with the query where possible."""
+    meaningful_terms = {
+        term
+        for term in expand_query_terms(query)
+        if is_meaningful_query_term(term) and " " not in term
+    }
+    source_text = " ".join(
+        part
+        for part in [
+            record.summary,
+            record.excerpt,
+            record.punishment_summary or "",
+            record.retrieval_document or "",
+        ]
+        if part
+    )
+    if not source_text:
+        return ""
+
+    fragments = [
+        fragment.strip()
+        for fragment in re.split(r"(?<=[.!?])\s+|\n+", source_text)
+        if fragment.strip()
+    ]
+    if not fragments:
+        return source_text[:max_chars].strip()
+
+    def fragment_score(fragment: str) -> tuple[int, int]:
+        normalized = normalize_text(fragment)
+        tokens = set(tokenize(normalized))
+        token_overlap = len(meaningful_terms & tokens)
+        phrase_overlap = sum(1 for term in meaningful_terms if term and term in normalized)
+        return (token_overlap * 3 + phrase_overlap, min(len(fragment), max_chars))
+
+    best = max(fragments, key=fragment_score)
+    if len(best) <= max_chars:
+        return best
+    return best[: max_chars - 1].rstrip() + "..."
 
 
 def find_linked_records(
@@ -1469,7 +1628,20 @@ def get_retrieval_probe(query: str, limit: int = 6) -> dict[str, object]:
                 "final_score": int(merged_map.get(record.id, keyword_score)),
                 "selected": record.id in selected_ids,
                 "exact_section_match": record_matches_requested_section(query, record),
-                "excerpt": record.excerpt,
+                "structured_score_components": [
+                    {
+                        "name": component.name,
+                        "score": component.score,
+                        "reason": component.reason,
+                    }
+                    for component in build_applicable_score_components(
+                        query,
+                        record,
+                        base_score=keyword_score + vector_bonus,
+                    )
+                    if component.score != 0
+                ],
+                "excerpt": select_best_excerpt(query, record),
             }
         )
 
@@ -1499,6 +1671,7 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     query_lower = normalize_text(query)
     searchable_text = normalize_text(get_record_searchable_text(record))
     signals = build_query_signals(query)
+    province_hint = detect_province_hint(query)
     reasons: list[str] = []
 
     if normalize_text(record.section_title) in query_lower:
@@ -1506,6 +1679,9 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
 
     if normalize_text(record.law_name) in query_lower:
         reasons.append(f"Direct mention of law name: {record.law_name}.")
+
+    if province_hint and record.province == province_hint:
+        reasons.append(f"Province-specific wording in the query aligns with {record.province} legal material.")
 
     exact_section_score = score_exact_section_match(query, record)
     if exact_section_score > 0:
@@ -1551,8 +1727,31 @@ def explain_record_match(query: str, record: LegalSourceRecord) -> list[str]:
     if signals["investigation"] and record.section_number == "156":
         reasons.append("The query asks about investigation powers, which aligns with cognizable-case investigation procedure.")
 
+    if record.provision_kind == "source_reference" and record.province:
+        reasons.append(
+            f"This is a province-aware source-reference record pointing to the official {record.province} legislation repository."
+        )
+
+    structured_components = [
+        component
+        for component in build_structured_score_components(query, record)
+        if component.score > 0
+        and component.name
+        in {
+            "jurisdiction",
+            "record_type",
+            "procedure_type",
+            "category",
+            "source_quality",
+            "metadata_completeness",
+        }
+    ]
+    for component in structured_components[:2]:
+        if component.reason not in reasons:
+            reasons.append(component.reason)
+
     if signals["civil"] and not any([signals["online"], signals["police"], signals["threat"], signals["assault"], signals["harassment"]]):
-        reasons.append("The query also contains civil or family-dispute wording, so this match should be treated cautiously because prototype coverage is limited there.")
+        reasons.append("The query also contains civil or family-dispute wording, so this match should be treated cautiously because current coverage is limited there.")
 
     if signals["house_context"] and signals["trespass"] and record.section_number in {"442", "448"}:
         reasons.append("The query points to a house or home entry situation, which aligns with house-trespass provisions.")

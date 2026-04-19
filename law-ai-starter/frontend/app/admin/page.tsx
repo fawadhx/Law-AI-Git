@@ -1996,8 +1996,8 @@ export default function AdminPage() {
                 lineHeight: 1.65,
               }}
             >
-              The admin workspace now supports a real source-detail flow plus a prototype review gate. You can filter the live
-              prototype catalog, select one record, edit a draft, validate it, compare change scope,
+              The admin workspace now supports a real source-detail flow plus a controlled review gate. You can filter the live
+              source catalog, select one record, edit a draft, validate it, compare change scope,
               and build a publish preview before later real save and approval workflows are introduced.
             </p>
           </div>
@@ -2248,7 +2248,7 @@ export default function AdminPage() {
                     marginBottom: "16px",
                   }}
                 >
-                  Prototype governance overview
+                  Governance overview
                 </div>
 
                 <div
@@ -3860,7 +3860,7 @@ Working draft editor + review gate + publish preview
                 <div style={{ ...softCardStyle, display: "grid", gap: "14px", position: "sticky", top: "20px" }}>
                   <div style={{ ...badge("pink") }}>Validation preview</div>
                   <div style={{ color: "#dbe4ff", lineHeight: 1.7 }}>
-                    This prototype check flags missing fields, weak retrieval metadata, and broken section linkages before later save/review workflows exist.
+                    This validation check flags missing fields, weak retrieval metadata, and broken section linkages before later save/review workflows exist.
                   </div>
 
                   {draftError && (
@@ -3980,7 +3980,7 @@ Working draft editor + review gate + publish preview
                           Draft issues
                         </div>
                         {draftValidation.issues.length === 0 ? (
-                          <div style={{ color: "#bdf3d8" }}>No draft issues found. This draft looks structurally strong for the current prototype rules.</div>
+                          <div style={{ color: "#bdf3d8" }}>No draft issues found. This draft looks structurally strong for the current review rules.</div>
                         ) : (
                           <div style={{ display: "grid", gap: "10px" }}>
                             {draftValidation.issues.map((issue, index) => (
@@ -4145,7 +4145,7 @@ Working draft editor + review gate + publish preview
                             </div>
                             <div style={{ display: "grid", gap: "10px" }}>
                               {publishPreview.blockers.length === 0 && publishPreview.warnings.length === 0 ? (
-                                <div style={{ color: "#bdf3d8" }}>No publish blockers or warnings surfaced by the current prototype checks.</div>
+                                <div style={{ color: "#bdf3d8" }}>No publish blockers or warnings surfaced by the current checks.</div>
                               ) : (
                                 <>
                                   {publishPreview.blockers.map((item, index) => (

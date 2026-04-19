@@ -46,7 +46,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="Law AI backend starter scaffold",
+    description="Law AI backend for legal information, retrieval, and admin operations",
     lifespan=lifespan,
 )
 

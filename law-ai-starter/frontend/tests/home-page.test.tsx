@@ -17,10 +17,14 @@ describe("homepage", () => {
     render(<HomePage />);
 
     expect(
-      screen.getByRole("heading", { name: "Legal Transparency for Every Citizen." }),
+      screen.getByRole("heading", {
+        name: "Search Pakistan legal information quickly.",
+      }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Legal Chat" })).toHaveAttribute("href", "/chat");
-    expect(screen.getByRole("link", { name: "View Admin Prototype" })).toHaveAttribute("href", "/admin");
-    expect(screen.getByText(/LEGAL INFORMATION ONLY:/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Admin Console" })).toHaveAttribute("href", "/admin");
+    expect(
+      screen.getByPlaceholderText("Ask a legal-information question..."),
+    ).toBeInTheDocument();
   });
 });

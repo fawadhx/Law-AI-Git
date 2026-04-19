@@ -75,9 +75,19 @@ def _normalize_retrieval_document(value: str) -> str:
 def build_canonical_retrieval_document(record: LegalSourceRecord) -> str:
     ordered_parts = [
         record.citation_label,
+        record.country,
         record.law_name,
+        record.official_citation or "",
         record.section_number,
         record.section_title,
+        record.jurisdiction_type,
+        record.law_type or "",
+        record.government_level,
+        record.province or "",
+        record.law_category or "",
+        record.source_status or "",
+        str(record.enactment_year or ""),
+        str(record.effective_year or ""),
         record.summary,
         record.excerpt,
         " ".join(record.tags),
@@ -88,6 +98,11 @@ def build_canonical_retrieval_document(record: LegalSourceRecord) -> str:
         record.punishment_summary or "",
         record.provision_kind,
         record.source_title,
+        record.amendment_notes or "",
+        record.source_url or "",
+        record.source_last_verified or "",
+        record.provenance or "",
+        record.source_trust_level or "",
     ]
     return _normalize_retrieval_document(" ".join(part for part in ordered_parts if part))
 
@@ -145,7 +160,7 @@ def get_legal_source_store_diagnostics(*, prefer_database: bool = True) -> dict[
     retrieval_profile_label = (
         "Normalized database retrieval documents"
         if snapshot.active_source == "database"
-        else "In-memory searchable parts"
+        else "Fallback searchable fields"
     )
 
     return {
@@ -176,7 +191,7 @@ def _in_memory_snapshot(*, detail: str, persisted_record_count: int, database_re
     records = _sort_records(list(LEGAL_SOURCES))
     return LegalSourceStoreSnapshot(
         active_source="in_memory",
-        source_label="In-memory prototype catalog",
+        source_label="In-memory fallback catalog",
         database_ready=database_ready,
         foundation_stage=foundation_stage,
         active_record_count=len(records),
@@ -197,7 +212,7 @@ def get_legal_source_store_snapshot(*, prefer_database: bool = True) -> LegalSou
 
     if not prefer_database or not database_ready:
         fallback_detail = (
-            "The active legal source store is currently the in-memory prototype catalog. "
+            "The active legal source store is currently the in-memory fallback catalog. "
             + detail
             + " "
             + _vector_readiness_label(vector_stage=vector_stage, coverage_percent=embedding_coverage)
@@ -212,7 +227,7 @@ def get_legal_source_store_snapshot(*, prefer_database: bool = True) -> LegalSou
     session_factory = get_session_factory()
     if session_factory is None:
         return _in_memory_snapshot(
-            detail="Database is configured, but no session factory is available yet, so the active legal source store remains the in-memory prototype catalog.",
+            detail="Database is configured, but no session factory is available yet, so the active legal source store remains the in-memory fallback catalog.",
             persisted_record_count=persisted_record_count,
             database_ready=False,
             foundation_stage="database_not_ready",
@@ -240,7 +255,7 @@ def get_legal_source_store_snapshot(*, prefer_database: bool = True) -> LegalSou
 
         return _in_memory_snapshot(
             detail=(
-                "Database is ready, but the persisted catalog is empty, so the active legal source store is falling back to the in-memory prototype catalog. "
+                "Database is ready, but the persisted catalog is empty, so the active legal source store is falling back to the in-memory catalog. "
                 + _vector_readiness_label(vector_stage=vector_stage, coverage_percent=embedding_coverage)
                 + (f" {detail}" if detail else "")
             ).strip(),
@@ -250,7 +265,7 @@ def get_legal_source_store_snapshot(*, prefer_database: bool = True) -> LegalSou
         )
     except SQLAlchemyError as exc:  # pragma: no cover - depends on environment
         return _in_memory_snapshot(
-            detail=f"Database-backed source reading failed ({exc}), so the active legal source store is using the in-memory prototype catalog.",
+            detail=f"Database-backed source reading failed ({exc}), so the active legal source store is using the in-memory fallback catalog.",
             persisted_record_count=persisted_record_count,
             database_ready=False,
             foundation_stage="database_error",

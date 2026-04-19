@@ -1,0 +1,481 @@
+.page {
+  min-height: 100vh;
+  padding: 18px 0 40px;
+  background: var(--theme-page-bg);
+}
+
+.shell {
+  width: var(--public-shell-width);
+  margin: 0 auto;
+}
+
+.layoutGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.22fr) minmax(320px, 0.84fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.workspace,
+.detailPanel,
+.detailStack {
+  display: grid;
+  gap: 12px;
+}
+
+.topBar,
+.controlCard,
+.listPanel,
+.detailPanel,
+.detailCard {
+  border: var(--public-card-border);
+  border-radius: 26px;
+  background: var(--theme-surface);
+  box-shadow: var(--theme-shadow);
+}
+
+.topBar,
+.controlCard,
+.listPanel,
+.detailPanel,
+.detailCard {
+  padding: 16px;
+}
+
+.topBar,
+.controlHead,
+.listHeader,
+.detailHeader,
+.caseMeta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.topLinks,
+.filterGrid,
+.tagRow,
+.issueLine {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.topBarText {
+  max-width: 44rem;
+}
+
+.sectionEyebrow,
+.kindBadge {
+  color: var(--theme-pill-text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sectionText,
+.caseCard p,
+.metaItem span,
+.detailSection p,
+.timelineSummary,
+.emptyState {
+  margin: 0;
+  color: var(--theme-text-secondary);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.secondaryLink,
+.caseCard {
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  padding: 0 20px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--theme-button-secondary-border);
+  background: var(--theme-button-secondary-bg);
+  color: var(--theme-button-secondary-text);
+}
+
+.secondaryLink:hover,
+.caseCard:hover {
+  transform: translateY(-1px);
+}
+
+.caseCard:hover {
+  border-color: var(--theme-border-strong);
+  box-shadow: var(--theme-shadow);
+}
+
+.controlHead h1,
+.detailHeader h2,
+.caseCard h2,
+.detailSection h3 {
+  margin: 0;
+  color: var(--theme-heading);
+  letter-spacing: -0.03em;
+}
+
+.controlHead h1 {
+  font-size: 22px;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.detailHeader h2,
+.caseCard h2 {
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.detailSection h3 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.resultCount,
+.tagLine,
+.caseReference,
+.timelineDate {
+  color: var(--theme-text-muted);
+  font-size: 13px;
+}
+
+.searchInput,
+.selectField select {
+  width: 100%;
+  min-height: 56px;
+  padding: 0 18px;
+  border: 1px solid var(--theme-input-border);
+  border-radius: 16px;
+  background: var(--theme-input-bg);
+  color: var(--theme-input-text);
+  font-size: 15px;
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: var(--theme-input-placeholder);
+}
+
+.searchInput:focus,
+.selectField select:focus {
+  border-color: var(--theme-pill-border);
+  box-shadow: 0 0 0 4px var(--theme-focus-ring);
+}
+
+.quickStats,
+.primerGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.statCard,
+.primerCard {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: var(--public-card-border);
+  border-radius: 16px;
+  background: var(--theme-surface-muted);
+}
+
+.statCard strong,
+.primerCard strong {
+  color: var(--theme-heading);
+  font-size: 18px;
+}
+
+.statCard span,
+.primerCard span {
+  color: var(--theme-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.primerCard strong {
+  font-size: 14px;
+}
+
+.selectField {
+  display: grid;
+  gap: 8px;
+  color: var(--theme-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.caseList,
+.timeline,
+.issueGrid,
+.linkedLawList,
+.bulletList {
+  display: grid;
+  gap: 12px;
+}
+
+.issueGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.caseCard,
+.metaItem,
+.timelineItem,
+.issueCard,
+.linkedLawItem,
+.emptyState {
+  border: var(--public-card-border);
+  border-radius: var(--public-panel-radius);
+  background: var(--theme-surface-muted);
+}
+
+.caseCard {
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+}
+
+.caseCardActive {
+  border-color: var(--theme-border-strong);
+  background: var(--theme-surface);
+  box-shadow: var(--theme-shadow);
+}
+
+.caseCard h2 {
+  margin: 4px 0 6px;
+}
+
+.caseReference {
+  margin-bottom: 2px;
+}
+
+.caseSubMeta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--theme-text-muted);
+  font-size: 13px;
+}
+
+.issueLine span {
+  color: var(--theme-text-secondary);
+  font-size: 13px;
+  border: 1px solid var(--theme-chip-border);
+  border-radius: 999px;
+  background: var(--theme-chip-bg);
+  padding: 6px 10px;
+}
+
+.caseLead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.caseLeadTitle {
+  color: var(--theme-heading);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+  margin-bottom: 6px;
+}
+
+.caseLeadBadges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.outcomeBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--theme-pill-border);
+  background: var(--theme-pill-bg);
+  color: var(--theme-pill-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.detailSection {
+  display: grid;
+  gap: 8px;
+}
+
+.tagChip {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--theme-chip-border);
+  background: var(--theme-chip-bg);
+  color: var(--theme-chip-text);
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.detailPanel {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+}
+
+.detailCard {
+  display: grid;
+  gap: 12px;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metaItem {
+  display: grid;
+  gap: 6px;
+  padding: 13px 14px;
+  background: var(--theme-surface);
+}
+
+.metaItem strong,
+.timelineTitle,
+.linkedLawItem strong {
+  color: var(--theme-heading);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.timelineTitle span {
+  margin-left: 6px;
+  color: var(--theme-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.timelineItem {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 14px;
+  padding: 13px 14px;
+  background: var(--theme-surface-muted);
+}
+
+.issueCard,
+.linkedLawItem {
+  padding: 13px 14px;
+  color: var(--theme-text);
+}
+
+.linkedLawItem {
+  display: grid;
+  gap: 6px;
+  background: var(--theme-surface);
+}
+
+.linkedLawItem span,
+.linkedLawItem p,
+.bulletList div {
+  margin: 0;
+  color: var(--theme-text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.bulletList div {
+  position: relative;
+  padding-left: 14px;
+}
+
+.bulletList div::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--theme-pill-text);
+}
+
+.sourceLink {
+  color: var(--theme-button-secondary-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+@media (max-width: 1080px) {
+  .layoutGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailPanel {
+    position: static;
+  }
+
+  .quickStats {
+    grid-template-columns: 1fr;
+  }
+
+  .primerGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100% - 24px, 1200px);
+  }
+
+  .topLinks {
+    width: 100%;
+  }
+
+  .secondaryLink {
+    width: 100%;
+  }
+
+  .filterGrid,
+  .metaGrid,
+  .timelineItem,
+  .issueGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .caseLead {
+    flex-direction: column;
+  }
+}

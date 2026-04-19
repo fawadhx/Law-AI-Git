@@ -17,6 +17,7 @@ from app.services.legal_retrieval_service import (
     explain_record_match,
     get_retrieval_source_status,
     retrieve_scored_legal_sources,
+    select_best_excerpt,
 )
 
 
@@ -40,7 +41,7 @@ def build_source_store_scope_note(question: str, category_key: str, confidence_l
         "the persisted legal-source catalog with vector-assisted reranking"
         if status.get("vector_retrieval_active")
         else (
-            "the hybrid retrieval catalog of reviewed corpus sections plus prototype records"
+            "the hybrid retrieval catalog of reviewed corpus sections plus legacy catalog records"
             if status["active_source"] == "hybrid"
             else "the persisted legal-source catalog"
         )
@@ -95,12 +96,12 @@ def build_officer_authority_note(rank_key: str) -> str | None:
     lines = [
         f"Officer-rank note: {record['rank']}",
         record["summary"],
-        "Typical prototype powers:",
+        "Typical authority summary:",
     ]
     for power in record["powers"]:
         lines.append(f"- {power}")
 
-    lines.append("Prototype limitations:")
+    lines.append("Operational limitations:")
     for limitation in record["limitations"]:
         lines.append(f"- {limitation}")
 
@@ -133,7 +134,7 @@ def build_scope_boundary_note(question: str, category_key: str) -> str | None:
 
     if category_key == "civil_family" or any(term in lower for term in civil_terms):
         return (
-            "Current prototype scope note: the dataset is presently strongest for criminal-law, PECA, arrest/detention, "
+            "Current scope note: the dataset is presently strongest for criminal-law, PECA, arrest/detention, "
             "and officer-authority public-awareness questions. Civil, family, tenancy, inheritance, contract, and broader "
             "property-rights coverage is still limited."
         )
@@ -248,7 +249,7 @@ def choose_primary_record(question: str, records: list[LegalSourceRecord]) -> Le
     return records[0]
 
 
-def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
+def build_citations(question: str, records: list[LegalSourceRecord]) -> list[Citation]:
     seen: set[tuple[str, str, str]] = set()
     citations: list[Citation] = []
 
@@ -265,7 +266,7 @@ def build_citations(records: list[LegalSourceRecord]) -> list[Citation]:
                 title=record.law_name,
                 section=record.section_number,
                 note=note,
-                excerpt=record.excerpt,
+                excerpt=select_best_excerpt(question, record),
                 provenance=record.provenance,
                 source_url=record.source_url,
             )
@@ -380,11 +381,11 @@ def build_category_guidance(category_key: str) -> str:
         ),
         "civil_family": (
             "This appears to involve a civil, family, tenancy, inheritance, contract, or broader property-rights issue. "
-            "Current prototype coverage in that area is limited, so answers should be read very cautiously and may require later dataset expansion."
+            "Current coverage in that area is limited, so answers should be read very cautiously and may require later dataset expansion."
         ),
         "general": (
             "This appears to be a broader legal-information question. "
-            "The system will try to match the closest available structured legal records in the prototype dataset."
+            "The system will try to match the closest available structured legal records in the current dataset."
         ),
     }
 
@@ -394,14 +395,14 @@ def build_category_guidance(category_key: str) -> str:
 def build_confidence_note(confidence: ChatConfidence) -> str:
     if confidence.level == "high":
         return (
-            "The current prototype found a comparatively strong match in its internal legal-source records."
+            "The current dataset found a comparatively strong match in its internal legal-source records."
         )
     if confidence.level == "medium":
         return (
-            "The current prototype found a reasonable match, but the result should still be read cautiously."
+            "The current dataset found a reasonable match, but the result should still be read cautiously."
         )
     return (
-        "The current prototype found only a limited or tentative match, so this result should be treated with extra caution."
+        "The current dataset found only a limited or tentative match, so this result should be treated with extra caution."
     )
 
 
@@ -439,18 +440,18 @@ def summarize_overlap(records: list[LegalSourceRecord]) -> str | None:
     if len(law_names) > 1:
         if "Prevention of Electronic Crimes Act" in law_names and "Pakistan Penal Code" in law_names:
             return (
-                "The facts may engage overlapping PPC and PECA provisions in the current prototype, "
+                "The facts may engage overlapping PPC and PECA provisions in the current dataset, "
                 "so both traditional criminal-law and cyber-law sections are being surfaced together."
             )
         return (
-            "The current prototype found relevant sections from more than one law, which suggests an overlap issue rather than a single isolated section."
+            "The current dataset found relevant sections from more than one law, which suggests an overlap issue rather than a single isolated section."
         )
 
     if len(distinct_groups) > 1:
         common_groups = Counter(offence_groups).most_common(2)
         group_names = ", ".join(group for group, _ in common_groups if group)
         return (
-            "The current prototype found more than one offence pattern in the question. "
+            "The current dataset found more than one offence pattern in the question. "
             f"The strongest overlap clusters were: {group_names}."
         )
 
@@ -550,23 +551,23 @@ def build_no_match_answer(
 
     section_note = ""
     if extract_section_references(question):
-        section_note = "The question appears to ask about a specific section, but that exact section could not be confidently resolved from the current prototype records.\n\n"
+        section_note = "The question appears to ask about a specific section, but that exact section could not be confidently resolved from the current records.\n\n"
     scope_note = build_scope_boundary_note(question, category["key"])
     scope_block = f"{scope_note}\n\n" if scope_note else ""
 
     return (
-        "No strong legal-source match was found in the current prototype dataset.\n\n"
+        "No strong legal-source match was found in the current dataset.\n\n"
         f"Confidence level: {confidence.level.upper()}\n\n"
         f"{section_note}"
         f"{scope_block}"
         "What this means:\n"
         "- The system could not confidently map your question to the current internal legal records.\n"
-        "- This does not mean no law applies. It only means the current prototype dataset is still limited.\n\n"
+        "- This does not mean no law applies. It only means the current dataset is still limited.\n\n"
         "Issue-type guidance:\n"
         f"- {build_category_guidance(category['key'])}\n\n"
         "Try asking with clearer facts like:\n"
         f"{suggestion_lines}\n\n"
-        "Useful example terms currently covered in the prototype include:\n"
+        "Useful example terms currently covered in the current dataset include:\n"
         "- theft\n"
         "- cheating or 420\n"
         "- criminal breach of trust\n"
@@ -600,10 +601,10 @@ def build_weak_match_answer(
         "",
         f"Confidence level: {confidence.level.upper()}",
         "",
-        "The prototype found only a weak or partial match for this wording.",
+        "The current dataset found only a weak or partial match for this wording.",
         "That means the sections below are the nearest current records, but they may not fully capture the facts as asked.",
         "",
-        "Closest prototype sections:",
+        "Closest matching sections:",
     ]
 
     if section_note:
@@ -636,7 +637,7 @@ def build_weak_match_answer(
     lines.extend(
         [
             "",
-            "Current prototype note:",
+            "Current dataset note:",
             (
                 "This answer is based on the current structured legal dataset available to retrieval. "
                 "It is general legal information, not a substitute for "
@@ -675,7 +676,7 @@ def build_unresolved_section_note(question: str, records: list[LegalSourceRecord
 
     requested_list = ", ".join(sorted(requested))
     return (
-        f"The query appears to ask about section {requested_list}, but that exact section was not confidently resolved in the current prototype dataset. "
+        f"The query appears to ask about section {requested_list}, but that exact section was not confidently resolved in the current dataset. "
         "The answer below is therefore only a best-effort match using the closest available records."
     )
 
@@ -694,11 +695,11 @@ def build_match_answer(
     officer_note = build_officer_authority_note(officer_rank) if officer_rank else None
 
     if confidence.level == "high":
-        opening = "A strong current match was found in the prototype dataset."
+        opening = "A strong current match was found in the dataset."
     elif confidence.level == "medium":
-        opening = "A reasonably relevant current match was found in the prototype dataset."
+        opening = "A reasonably relevant current match was found in the dataset."
     else:
-        opening = "A tentative current match was found in the prototype dataset."
+        opening = "A tentative current match was found in the dataset."
 
     lines: list[str] = [
         "Matched legal information",
@@ -753,7 +754,7 @@ def build_match_answer(
             "Confidence note:",
             build_confidence_note(confidence),
             "",
-            "Current prototype note:",
+            "Current dataset note:",
             (
                 "This answer is based on the current structured legal dataset available to retrieval. "
                 "It is general legal information, not a substitute for "
@@ -798,8 +799,8 @@ def build_officer_only_answer(
     lines.extend(
         [
             "",
-            "Current prototype note:",
-            "This officer-rank response comes from the prototype's structured officer-authority records and is general legal information only.",
+            "Current dataset note:",
+            "This officer-rank response comes from the structured officer-authority records and is general legal information only.",
         ]
     )
     return "\n".join(lines)
@@ -812,7 +813,7 @@ def build_officer_why_matched(rank_key: str) -> list[MatchExplanation]:
 
     return [
         MatchExplanation(
-            title=f"{record['rank']} — Officer authority prototype record",
+            title=f"{record['rank']} - Officer authority reference",
             points=[
                 f"Direct police-rank mention matched: {record['rank']}.",
                 "The question was routed to structured officer-authority data.",
@@ -829,7 +830,7 @@ def build_officer_citations(rank_key: str) -> list[Citation]:
 
     return [
         Citation(
-            title="Officer Authority Prototype",
+            title="Officer Authority Reference",
             section=record["rank"],
             note="Structured rank summary and authority limitations",
             excerpt=record["summary"],
@@ -884,7 +885,7 @@ def generate_mock_legal_response(question: str) -> ChatQueryResponse:
         confidence = ChatConfidence(level="low", score=0, matched_records=0)
         detected_category = {
             "key": "civil_family",
-            "label": "Civil / Family / Property / Contract (Limited Prototype Coverage)",
+            "label": "Civil / Family / Property / Contract (Limited Coverage)",
         }
 
     answer = build_answer(question, scored_records, records, detected_category, confidence)
@@ -893,7 +894,7 @@ def generate_mock_legal_response(question: str) -> ChatQueryResponse:
         citations = build_officer_citations(officer_rank) if officer_rank else []
         why_matched = build_officer_why_matched(officer_rank) if officer_rank else []
     else:
-        citations = build_citations(records)
+        citations = build_citations(question, records)
         why_matched = build_why_matched(question, records)
 
     return ChatQueryResponse(

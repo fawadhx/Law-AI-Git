@@ -18,9 +18,19 @@ def _normalize_retrieval_document(value: str) -> str:
 def _build_retrieval_document(record: LegalSourceRecord) -> str:
     ordered_parts = [
         record.citation_label,
+        record.country,
         record.law_name,
+        record.official_citation or "",
         record.section_number,
         record.section_title,
+        record.jurisdiction_type,
+        record.law_type or "",
+        record.government_level,
+        record.province or "",
+        record.law_category or "",
+        record.source_status or "",
+        str(record.enactment_year or ""),
+        str(record.effective_year or ""),
         record.summary,
         record.excerpt,
         " ".join(record.tags),
@@ -31,6 +41,11 @@ def _build_retrieval_document(record: LegalSourceRecord) -> str:
         record.punishment_summary or "",
         record.provision_kind,
         record.source_title,
+        record.amendment_notes or "",
+        record.source_url or "",
+        record.source_last_verified or "",
+        record.provenance or "",
+        record.source_trust_level or "",
     ]
     return _normalize_retrieval_document(" ".join(part for part in ordered_parts if part))
 
@@ -56,7 +71,17 @@ class LegalSourceORM(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     excerpt: Mapped[str] = mapped_column(Text, nullable=False)
     citation_label: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    country: Mapped[str] = mapped_column(String(120), nullable=False, default="Pakistan")
     jurisdiction: Mapped[str] = mapped_column(String(120), nullable=False, default="Pakistan")
+    jurisdiction_type: Mapped[str] = mapped_column(String(32), nullable=False, default="federal", index=True)
+    government_level: Mapped[str] = mapped_column(String(32), nullable=False, default="federal", index=True)
+    province: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    law_category: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    law_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    source_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    official_citation: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    enactment_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    effective_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -76,7 +101,12 @@ class LegalSourceORM(Base):
     embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     embedding_updated_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    source_status: Mapped[str] = mapped_column(String(32), nullable=False, default="published", index=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_last_verified: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    amendment_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provenance: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_trust_level: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    retrieval_source_type: Mapped[str] = mapped_column(String(48), nullable=False, default="legacy_catalog")
 
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[object] = mapped_column(
@@ -99,7 +129,17 @@ class LegalSourceORM(Base):
             summary=record.summary,
             excerpt=record.excerpt,
             citation_label=record.citation_label,
+            country=record.country,
             jurisdiction=record.jurisdiction,
+            jurisdiction_type=record.jurisdiction_type,
+            government_level=record.government_level,
+            province=record.province,
+            law_category=record.law_category,
+            law_type=record.law_type,
+            source_status=record.source_status or "published",
+            official_citation=record.official_citation,
+            enactment_year=record.enactment_year,
+            effective_year=record.effective_year,
             tags=list(record.tags),
             aliases=list(record.aliases),
             keywords=list(record.keywords),
@@ -115,7 +155,12 @@ class LegalSourceORM(Base):
             embedding_model=record.embedding_model or settings.legal_source_embedding_model,
             embedding_dimensions=record.embedding_dimensions or settings.legal_source_embedding_dimensions,
             embedding_updated_at=None,
-            source_status="published",
+            source_url=record.source_url,
+            source_last_verified=record.source_last_verified,
+            amendment_notes=record.amendment_notes,
+            provenance=record.provenance,
+            source_trust_level=record.source_trust_level,
+            retrieval_source_type=record.retrieval_source_type,
         )
 
     def to_record(self) -> LegalSourceRecord:
@@ -128,7 +173,17 @@ class LegalSourceORM(Base):
             summary=self.summary,
             excerpt=self.excerpt,
             citation_label=self.citation_label,
+            country=self.country or "Pakistan",
             jurisdiction=self.jurisdiction,
+            jurisdiction_type=self.jurisdiction_type or self.government_level or "federal",
+            government_level=self.government_level or "federal",
+            province=self.province,
+            law_category=self.law_category,
+            law_type=self.law_type,
+            source_status=self.source_status,
+            official_citation=self.official_citation,
+            enactment_year=self.enactment_year,
+            effective_year=self.effective_year,
             tags=list(self.tags or []),
             aliases=list(self.aliases or []),
             keywords=list(self.keywords or []),
@@ -142,4 +197,10 @@ class LegalSourceORM(Base):
             embedding_model=self.embedding_model or None,
             embedding_dimensions=self.embedding_dimensions,
             embedding_updated_at=self.embedding_updated_at.isoformat() if self.embedding_updated_at else None,
+            source_url=self.source_url,
+            source_last_verified=self.source_last_verified,
+            amendment_notes=self.amendment_notes,
+            provenance=self.provenance,
+            source_trust_level=self.source_trust_level,
+            retrieval_source_type=self.retrieval_source_type or "legacy_catalog",
         )

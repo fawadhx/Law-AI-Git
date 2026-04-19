@@ -47,7 +47,15 @@ class AdminSourceRecord(BaseModel):
     section_number: str
     section_title: str
     summary: str
+    country: str = "Pakistan"
     jurisdiction: str
+    jurisdiction_type: str = "federal"
+    government_level: str = "federal"
+    province: str | None = None
+    law_category: str | None = None
+    law_type: str | None = None
+    official_citation: str | None = None
+    source_status: str | None = None
     provision_kind: str
     offence_group: str | None = None
     related_sections: list[str] = Field(default_factory=list)
@@ -69,6 +77,7 @@ class AdminSourceCatalogResponse(BaseModel):
     catalog_source: AdminCatalogSourceInfo | None = None
     items: list[AdminSourceRecord]
     available_laws: list[str]
+    available_provinces: list[str] = Field(default_factory=list)
     available_groups: list[str]
     available_kinds: list[str]
     workflow_note: str
@@ -90,6 +99,13 @@ class AdminSourceDetailRecord(AdminSourceRecord):
     aliases: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     searchable_terms: list[str] = Field(default_factory=list)
+    enactment_year: int | None = None
+    effective_year: int | None = None
+    source_url: str | None = None
+    source_last_verified: str | None = None
+    source_trust_level: str | None = None
+    amendment_notes: str | None = None
+    provenance: str | None = None
     related_record_count: int = 0
     same_group_record_count: int = 0
     same_law_record_count: int = 0
@@ -113,7 +129,17 @@ class AdminSourceDraftInput(BaseModel):
     summary: str = ""
     excerpt: str = ""
     citation_label: str = ""
+    country: str = "Pakistan"
     jurisdiction: str = "Pakistan"
+    jurisdiction_type: str = "federal"
+    government_level: str = "federal"
+    province: str = ""
+    law_category: str = ""
+    law_type: str = ""
+    source_status: str = ""
+    official_citation: str = ""
+    enactment_year: int | None = None
+    effective_year: int | None = None
     tags: list[str] = Field(default_factory=list)
     aliases: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
@@ -121,6 +147,10 @@ class AdminSourceDraftInput(BaseModel):
     offence_group: str | None = None
     punishment_summary: str | None = None
     provision_kind: str = "general"
+    source_url: str = ""
+    source_last_verified: str = ""
+    amendment_notes: str = ""
+    source_trust_level: str = ""
 
 
 class AdminDraftValidationIssue(BaseModel):
