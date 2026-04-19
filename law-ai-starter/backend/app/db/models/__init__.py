@@ -7,6 +7,7 @@ from app.db.models.legal_corpus import (
 )
 from app.db.models.legal_source import LegalSourceORM
 from app.db.models.legal_source_embedding import LegalSourceEmbeddingORM
+from app.db.models.legal_source_version import LegalSourceVersionORM
 
 __all__ = [
     "AdminAuditEventORM",
@@ -16,4 +17,5 @@ __all__ = [
     "LegalProvisionORM",
     "LegalSourceORM",
     "LegalSourceEmbeddingORM",
+    "LegalSourceVersionORM",
 ]

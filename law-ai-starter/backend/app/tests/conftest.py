@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.main import app
-from app.services import admin_audit_service, admin_service
+from app.services import admin_audit_service, admin_service, legal_source_version_service
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +26,7 @@ def reset_test_state():
     admin_service.PUBLISH_PACKAGE_STORE.clear()
     admin_audit_service._FALLBACK_AUDIT_EVENTS.clear()
     admin_audit_service._current_admin_audit_context.set(None)
+    legal_source_version_service._FALLBACK_SOURCE_VERSIONS.clear()
 
     try:
         yield
@@ -34,6 +35,7 @@ def reset_test_state():
         admin_service.PUBLISH_PACKAGE_STORE.clear()
         admin_audit_service._FALLBACK_AUDIT_EVENTS.clear()
         admin_audit_service._current_admin_audit_context.set(None)
+        legal_source_version_service._FALLBACK_SOURCE_VERSIONS.clear()
 
         settings.admin_auth_secret_key = original_secret
         settings.admin_auth_username = original_username

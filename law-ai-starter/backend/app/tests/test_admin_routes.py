@@ -1,4 +1,9 @@
 from app.services import admin_audit_service
+from app.data.legal_sources import LEGAL_SOURCES
+
+
+def _remove_test_record(record_id: str) -> None:
+    LEGAL_SOURCES[:] = [record for record in LEGAL_SOURCES if record.id != record_id]
 
 
 VALID_DRAFT = {
@@ -85,3 +90,112 @@ def test_admin_workspace_save_and_stage_produce_audit_entries(client, admin_head
     kinds = [item.kind for item in items]
     assert "workspace_save" in kinds
     assert "stage_publish" in kinds
+
+
+def test_admin_source_create_and_update_record_versions(client, admin_headers):
+    record_id = "test-version-history-record"
+    _remove_test_record(record_id)
+    draft = {**VALID_DRAFT, "id": record_id, "citation_label": "Test Version Law s. 1"}
+
+    try:
+        create_response = client.post(
+            "/api/v1/admin/source-records",
+            json=draft,
+            headers=admin_headers,
+        )
+        assert create_response.status_code == 200
+        assert create_response.json()["create_status"] == "created"
+
+        history_response = client.get(
+            f"/api/v1/admin/sources/{record_id}/history",
+            headers=admin_headers,
+        )
+        assert history_response.status_code == 200
+        history = history_response.json()
+        assert history["total_versions"] == 1
+        assert history["items"][0]["action"] == "create"
+        assert history["items"][0]["version_number"] == 1
+
+        updated = {**draft, "summary": f"{draft['summary']} Updated for version testing."}
+        update_response = client.put(
+            f"/api/v1/admin/source-records/{record_id}",
+            json=updated,
+            headers=admin_headers,
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["update_status"] == "updated"
+
+        history_response = client.get(
+            f"/api/v1/admin/sources/{record_id}/history",
+            headers=admin_headers,
+        )
+        history = history_response.json()
+        assert history["total_versions"] == 2
+        assert history["latest_version_number"] == 2
+        assert history["items"][0]["action"] == "update"
+        assert history["items"][0]["changed_field_count"] >= 1
+
+        audit_items = admin_audit_service.list_admin_audit_events(limit=10)
+        assert any(item.kind == "version" and item.record_id == record_id for item in audit_items)
+    finally:
+        _remove_test_record(record_id)
+
+
+def test_admin_source_history_is_protected_and_empty_for_untouched_record(client, admin_headers):
+    protected_response = client.get("/api/v1/admin/sources/crpc-167/history")
+    assert protected_response.status_code == 401
+
+    response = client.get("/api/v1/admin/sources/crpc-167/history", headers=admin_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["record_id"] == "crpc-167"
+    assert payload["items"] == []
+
+
+def test_admin_publish_records_source_version(client, admin_headers):
+    draft = {
+        **VALID_DRAFT,
+        "id": "test-publish-version-record",
+        "source_title": "Pakistan Penal Code, 1860",
+        "law_name": "Pakistan Penal Code",
+        "citation_label": "Test Publish Version Law s. 1",
+        "law_type": "Act",
+        "official_citation": "Act XLV of 1860",
+        "source_status": "curated_catalog",
+        "related_sections": [],
+    }
+    _remove_test_record(draft["id"])
+
+    try:
+        save_response = client.post(
+            "/api/v1/admin/workspace/drafts/save",
+            json={"label": "Publish version draft", "draft": draft},
+            headers=admin_headers,
+        )
+        assert save_response.status_code == 200
+        workspace_draft_id = save_response.json()["workspace_draft"]["workspace_draft_id"]
+
+        stage_response = client.post(
+            "/api/v1/admin/workspace/publish-packages/stage",
+            json={"workspace_draft_id": workspace_draft_id, "draft": draft},
+            headers=admin_headers,
+        )
+        assert stage_response.status_code == 200
+        package_id = stage_response.json()["package_id"]
+
+        publish_response = client.post(
+            f"/api/v1/admin/workspace/publish-packages/{package_id}/publish",
+            headers=admin_headers,
+        )
+        assert publish_response.status_code == 200
+        published_id = publish_response.json()["published_record_id"]
+
+        history_response = client.get(
+            f"/api/v1/admin/sources/{published_id}/history",
+            headers=admin_headers,
+        )
+        assert history_response.status_code == 200
+        history = history_response.json()
+        assert history["items"][0]["action"] == "publish"
+    finally:
+        _remove_test_record(draft["id"])

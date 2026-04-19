@@ -109,6 +109,8 @@ type AdminSourceDetailResponse = {
   companion_records: AdminLinkedRecord[];
   same_group_records: AdminLinkedRecord[];
   same_law_records: AdminLinkedRecord[];
+  version_count: number;
+  latest_version_number: number | null;
   workflow_note: string;
   catalog_source?: AdminCatalogSourceInfo | null;
 };
@@ -303,6 +305,29 @@ type AdminActivityFeedResponse = {
   publish_event_count: number;
   latest_publish_label: string | null;
   items: AdminActivityRecord[];
+  workflow_note: string;
+};
+
+type AdminSourceVersionRecord = {
+  version_id: string;
+  record_id: string;
+  version_number: number;
+  action: string;
+  citation_label: string;
+  title: string;
+  changed_fields: AdminDraftFieldChange[];
+  changed_field_count: number;
+  actor_username: string | null;
+  actor_role: string | null;
+  audit_id: string | null;
+  created_at: string;
+};
+
+type AdminSourceHistoryResponse = {
+  record_id: string | null;
+  total_versions: number;
+  latest_version_number: number | null;
+  items: AdminSourceVersionRecord[];
   workflow_note: string;
 };
 
@@ -711,6 +736,9 @@ export default function AdminPage() {
   const [activity, setActivity] = useState<AdminActivityFeedResponse | null>(null);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState("");
+  const [sourceHistory, setSourceHistory] = useState<AdminSourceHistoryResponse | null>(null);
+  const [sourceHistoryLoading, setSourceHistoryLoading] = useState(false);
+  const [sourceHistoryError, setSourceHistoryError] = useState("");
   const [probeQuery, setProbeQuery] = useState("Can police arrest someone without warrant for online blackmail?");
   const [probeResult, setProbeResult] = useState<AdminRetrievalProbeResponse | null>(null);
   const [probeLoading, setProbeLoading] = useState(false);
@@ -962,6 +990,27 @@ export default function AdminPage() {
       }
     } finally {
       setActivityLoading(false);
+    }
+  }
+
+  async function loadSourceHistory(recordId: string) {
+    try {
+      setSourceHistoryLoading(true);
+      setSourceHistoryError("");
+      const response = await adminFetch(`/api/v1/admin/sources/${recordId}/history`, {
+        method: "GET",
+      });
+      if (!response.ok) {
+        throw new Error(`Source history request failed with status ${response.status}`);
+      }
+      const result: AdminSourceHistoryResponse = await response.json();
+      setSourceHistory(result);
+    } catch (err) {
+      if (err instanceof Error) {
+        setSourceHistoryError(err.message || "Failed to load source history.");
+      }
+    } finally {
+      setSourceHistoryLoading(false);
     }
   }
 
@@ -1218,6 +1267,7 @@ export default function AdminPage() {
 
       const result: AdminSourceDetailResponse = await response.json();
       setDetail(result);
+      void loadSourceHistory(recordId);
     } catch (err) {
       if (err instanceof Error) {
         setDetailError(err.message || "Failed to load source detail.");
@@ -2986,6 +3036,86 @@ export default function AdminPage() {
                               {detail.item.same_law_record_count}
                             </div>
                           </div>
+                          <div style={softCardStyle}>
+                            <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>
+                              Versions tracked
+                            </div>
+                            <div style={{ fontSize: "28px", fontWeight: 800 }}>
+                              {detail.version_count}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={softCardStyle}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: "12px",
+                              flexWrap: "wrap",
+                              marginBottom: "12px",
+                            }}
+                          >
+                            <div>
+                              <div style={{ color: "#9db8ff", fontSize: "12px", marginBottom: "8px" }}>
+                                Version history
+                              </div>
+                              <div style={{ color: "#ffffff", fontSize: "18px", fontWeight: 800 }}>
+                                {detail.latest_version_number
+                                  ? `Latest version ${detail.latest_version_number}`
+                                  : "Tracking starts from new changes"}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => loadSourceHistory(detail.item.id)}
+                              style={secondaryButton}
+                              disabled={sourceHistoryLoading}
+                            >
+                              {sourceHistoryLoading ? "Loading..." : "Refresh history"}
+                            </button>
+                          </div>
+
+                          {sourceHistoryError ? (
+                            <div style={{ color: "#ffe1e1", lineHeight: 1.6 }}>
+                              Failed to load source history: {sourceHistoryError}
+                            </div>
+                          ) : sourceHistoryLoading && !sourceHistory ? (
+                            <div style={{ color: "#dbe4ff" }}>Loading source history...</div>
+                          ) : sourceHistory && sourceHistory.record_id === detail.item.id && sourceHistory.items.length > 0 ? (
+                            <div style={{ display: "grid", gap: "10px" }}>
+                              {sourceHistory.items.slice(0, 5).map((item) => (
+                                <div key={item.version_id} style={{ ...softCardStyle, padding: "12px" }}>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      gap: "10px",
+                                      flexWrap: "wrap",
+                                      marginBottom: "6px",
+                                    }}
+                                  >
+                                    <div style={{ color: "#ffffff", fontWeight: 800 }}>
+                                      v{item.version_number} • {prettyKind(item.action)}
+                                    </div>
+                                    <div style={badge(toneFromStatus(item.action))}>
+                                      {item.changed_field_count} field{item.changed_field_count === 1 ? "" : "s"}
+                                    </div>
+                                  </div>
+                                  <div style={{ color: "#dbe4ff", lineHeight: 1.6 }}>{item.title}</div>
+                                  <div style={{ color: "#c6d3f3", fontSize: "13px", marginTop: "6px" }}>
+                                    {item.created_at}
+                                    {item.actor_username ? ` • ${item.actor_username}` : " • system"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ color: "#dbe4ff", lineHeight: 1.6 }}>
+                              No version snapshots exist for this record yet. History starts with the next admin create,
+                              update, publish, or delete action.
+                            </div>
+                          )}
                         </div>
 
                         <div style={softCardStyle}>
@@ -3662,9 +3792,9 @@ export default function AdminPage() {
             </section>
 
             <section style={{ ...cardStyle, padding: "24px", marginBottom: "24px" }}>
-              <div style={{ ...badge(), marginBottom: "12px" }}>Phase 4 activity feed</div>
+              <div style={{ ...badge(), marginBottom: "12px" }}>Admin audit trail</div>
               <div style={{ fontSize: "26px", fontWeight: 700, marginBottom: "16px" }}>
-                Session publish activity
+                Admin audit activity
               </div>
 
               {activityLoading ? (

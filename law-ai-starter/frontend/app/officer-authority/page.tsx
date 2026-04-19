@@ -1,8 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
+import { SaveButton } from "@/components/common/save-button";
 import { API_BASE_URL } from "@/lib/runtime-config";
+import {
+  activeFilterCount,
+  listOptionMatches,
+  matchesSearchQuery,
+  resultCountLabel,
+  uniqueOptionsFromLists,
+} from "@/lib/search-filter";
+import type { SavedItem } from "@/lib/saved-items";
 import styles from "./page.module.css";
 
 type OfficerAuthorityResponse = {
@@ -13,9 +21,24 @@ type OfficerAuthorityResponse = {
 };
 
 const ranks = [
-  { label: "SHO", value: "sho" },
-  { label: "ASI", value: "asi" },
-  { label: "Inspector", value: "inspector" },
+  {
+    label: "SHO",
+    value: "sho",
+    themes: ["FIR", "complaint", "station process", "investigation"],
+    description: "Station-level authority and public complaint handling context.",
+  },
+  {
+    label: "ASI",
+    value: "asi",
+    themes: ["arrest", "investigation", "field process", "detention"],
+    description: "Field investigation and procedure-related authority context.",
+  },
+  {
+    label: "Inspector",
+    value: "inspector",
+    themes: ["supervision", "investigation", "public order", "case review"],
+    description: "Supervisory police authority and investigation oversight context.",
+  },
 ];
 
 export default function OfficerAuthorityPage() {
@@ -23,11 +46,61 @@ export default function OfficerAuthorityPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<OfficerAuthorityResponse | null>(null);
+  const [discoveryQuery, setDiscoveryQuery] = useState("");
+  const [themeFilter, setThemeFilter] = useState("All authority themes");
 
   const titleRank = useMemo(() => {
     const match = ranks.find((item) => item.value === rank);
     return match?.label || rank.toUpperCase();
   }, [rank]);
+
+  const authorityThemes = useMemo(
+    () => uniqueOptionsFromLists(ranks.map((item) => item.themes), "All authority themes"),
+    [],
+  );
+
+  const filteredRanks = useMemo(() => {
+    return ranks.filter((item) => {
+      if (!listOptionMatches(themeFilter, item.themes, "All authority themes")) return false;
+      return matchesSearchQuery(discoveryQuery, [
+        item.label,
+        item.value,
+        item.description,
+        ...item.themes,
+      ]);
+    });
+  }, [discoveryQuery, themeFilter]);
+
+  const activeDiscoveryFilters = activeFilterCount(
+    { themeFilter },
+    ["All authority themes"],
+  ) + (discoveryQuery.trim() ? 1 : 0);
+
+  const savedAuthorityItem = useMemo<SavedItem | null>(() => {
+    if (!result) return null;
+    const sourceId = result.rank.toLowerCase();
+    return {
+      id: `officer-authority:${sourceId}`,
+      type: "officer-authority",
+      title: `${result.rank} authority details`,
+      subtitle: "Officer authority lookup",
+      summary: result.summary,
+      href: "/officer-authority",
+      tags: [result.rank, "authority", "powers", "limitations"],
+      metadata: {
+        rank: result.rank,
+        powers: result.powers.length,
+        limitations: result.limitations.length,
+      },
+      sourceId,
+      savedAt: new Date().toISOString(),
+    };
+  }, [result]);
+
+  function resetDiscoveryFilters() {
+    setDiscoveryQuery("");
+    setThemeFilter("All authority themes");
+  }
 
   async function fetchAuthority(selectedRank?: string) {
     const targetRank = (selectedRank || rank).trim().toLowerCase();
@@ -66,20 +139,12 @@ export default function OfficerAuthorityPage() {
               <div>
                 <div className={styles.sectionEyebrow}>Officer authority lookup</div>
                 <p className={styles.sectionText}>
-                  Search a rank and review the structured authority summary inside the working tool.
+                  Enter a rank to load the backend authority summary, powers, and limits.
                 </p>
-              </div>
-              <div className={styles.heroActions}>
-                <Link href="/" className={styles.secondaryLink}>
-                  Home
-                </Link>
-                <Link href="/chat" className={styles.secondaryLink}>
-                  Chat
-                </Link>
               </div>
             </div>
 
-            <h2>Check authority details</h2>
+            <h2>Rank authority lookup</h2>
 
             <label htmlFor="rank" className={styles.fieldLabel}>
               Officer rank
@@ -101,27 +166,67 @@ export default function OfficerAuthorityPage() {
             </button>
 
             <div className={styles.quickSection}>
-              <div className={styles.sectionEyebrow}>Quick examples</div>
-              <div className={styles.rankChips}>
-                {ranks.map((item) => (
-                  <button
-                    key={item.value}
-                    onClick={() => void fetchAuthority(item.value)}
-                    className={styles.rankChip}
-                    type="button"
-                  >
-                    {item.label}
-                  </button>
-                ))}
+              <div className={styles.sectionEyebrow}>Rank discovery</div>
+              <div className={styles.discoveryGrid}>
+                <input
+                  value={discoveryQuery}
+                  onChange={(event) => setDiscoveryQuery(event.target.value)}
+                  placeholder="Search rank, FIR, arrest, investigation..."
+                  className={styles.discoveryField}
+                />
+                <label className={styles.selectField}>
+                  <span>Authority theme</span>
+                  <select value={themeFilter} onChange={(event) => setThemeFilter(event.target.value)}>
+                    {authorityThemes.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
+              <div className={styles.filterSummary}>
+                <span>
+                  {resultCountLabel(filteredRanks.length, "rank")} shown
+                  {activeDiscoveryFilters ? `, ${activeDiscoveryFilters} filters active` : ""}
+                </span>
+                <button type="button" onClick={resetDiscoveryFilters}>
+                  Reset
+                </button>
+              </div>
+              {filteredRanks.length === 0 ? (
+                <div className={styles.emptyState}>
+                  No rank matches this search. Try <strong>FIR</strong>, <strong>arrest</strong>, or{" "}
+                  <strong>investigation</strong>.
+                </div>
+              ) : (
+                <div className={styles.rankChips}>
+                  {filteredRanks.map((item) => (
+                    <button
+                      key={item.value}
+                      onClick={() => void fetchAuthority(item.value)}
+                      className={styles.rankChip}
+                      type="button"
+                    >
+                      <span>{item.label}</span>
+                      <small>{item.themes.slice(0, 2).join(" / ")}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {error ? <div className={styles.errorBanner}>Request error: {error}</div> : null}
           </section>
 
           <section className={styles.resultCard}>
-            <div className={styles.sectionEyebrow}>Authority response</div>
-            <h2>{result ? `${result.rank} authority details` : `${titleRank} authority details`}</h2>
+            <div className={styles.resultHeader}>
+              <div>
+                <div className={styles.sectionEyebrow}>Authority response</div>
+                <h2>{result ? `${result.rank} authority details` : `${titleRank} authority details`}</h2>
+              </div>
+              <SaveButton item={savedAuthorityItem} />
+            </div>
 
             {!result ? (
               <div className={styles.emptyState}>

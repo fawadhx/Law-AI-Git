@@ -26,5 +26,13 @@ describe("homepage", () => {
     expect(
       screen.getByPlaceholderText("Ask a legal-information question..."),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Citation formats" })).toHaveAttribute(
+      "href",
+      "/citations-drafting",
+    );
+    expect(screen.getByRole("link", { name: "Case order summaries" })).toHaveAttribute(
+      "href",
+      "/case-studies",
+    );
   });
 });

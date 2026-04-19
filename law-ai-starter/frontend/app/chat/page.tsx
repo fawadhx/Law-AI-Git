@@ -1,10 +1,12 @@
 "use client";
-
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
+import { CopySummaryButton } from "@/components/common/copy-summary-button";
+import { SaveButton } from "@/components/common/save-button";
 import { API_BASE_URL } from "@/lib/runtime-config";
+import { formatResearchSummary } from "@/lib/research-utils";
+import { createStableHash, type SavedItem } from "@/lib/saved-items";
 import styles from "./page.module.css";
 
 type Citation = {
@@ -240,6 +242,7 @@ export default function ChatPage() {
     },
   ]);
   const [latestResponse, setLatestResponse] = useState<ChatQueryResponse | null>(null);
+  const [latestQuestion, setLatestQuestion] = useState("");
 
   const messagesPaneRef = useRef<HTMLDivElement | null>(null);
 
@@ -251,6 +254,7 @@ export default function ChatPage() {
   useEffect(() => {
     const pane = messagesPaneRef.current;
     if (!pane) return;
+    if (typeof pane.scrollTo !== "function") return;
     pane.scrollTo({ top: pane.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
@@ -282,6 +286,48 @@ export default function ChatPage() {
   }, [latestResponse]);
 
   const questionLength = question.trim().length;
+
+  const savedChatItem = useMemo<SavedItem | null>(() => {
+    if (!latestResponse || !latestQuestion.trim()) return null;
+    const sourceId = createStableHash(`${latestQuestion}\n${latestResponse.answer}`);
+    return {
+      id: `chat:${sourceId}`,
+      type: "chat",
+      title: latestQuestion,
+      subtitle: latestResponse.category.label,
+      summary: getShortExcerpt(latestResponse.answer, 220),
+      href: `/chat?q=${encodeURIComponent(latestQuestion)}`,
+      tags: [
+        latestResponse.category.label,
+        latestResponse.confidence.level,
+        `${latestResponse.citations.length} references`,
+      ],
+      metadata: {
+        category: latestResponse.category.label,
+        confidence: latestResponse.confidence.level,
+        citationCount: latestResponse.citations.length,
+        score: latestResponse.confidence.score,
+      },
+      sourceId,
+      savedAt: new Date().toISOString(),
+    };
+  }, [latestQuestion, latestResponse]);
+
+  const latestCopyText = useMemo(() => {
+    if (!latestResponse || !latestQuestion.trim()) return "";
+    return formatResearchSummary({
+      title: latestQuestion,
+      subtitle: "Law AI chat result",
+      summary: getShortExcerpt(latestResponse.answer, 500),
+      fields: [
+        ["Category", latestResponse.category.label],
+        ["Confidence", latestResponse.confidence.level],
+        ["Matched records", latestResponse.confidence.matched_records],
+        ["Citation titles", latestResponse.citations.map((citation) => citation.title).join(", ")],
+      ],
+      tags: [latestResponse.category.label, latestResponse.confidence.level],
+    });
+  }, [latestQuestion, latestResponse]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -323,6 +369,7 @@ export default function ChatPage() {
       const result: ChatQueryResponse = await response.json();
 
       setLatestResponse(result);
+      setLatestQuestion(trimmedQuestion);
       setMessages((previous) => [
         ...previous,
         {
@@ -348,6 +395,7 @@ export default function ChatPage() {
       },
     ]);
     setLatestResponse(null);
+    setLatestQuestion("");
     setError("");
     setQuestion(seededQuestion);
   }
@@ -365,17 +413,8 @@ export default function ChatPage() {
               <div>
                 <div className={styles.sectionEyebrow}>Law AI chat</div>
                 <p className={styles.workspaceIntro}>
-                  Ask a Pakistan legal-information question and review the matched records without
-                  leaving the workspace.
+                  Ask a question, then review matched records and confidence in the same workspace.
                 </p>
-              </div>
-              <div className={styles.heroActions}>
-                <Link href="/" className={styles.secondaryLink}>
-                  Home
-                </Link>
-                <Link href="/officer-authority" className={styles.secondaryLink}>
-                  Officer Authority
-                </Link>
               </div>
             </div>
 
@@ -426,8 +465,19 @@ export default function ChatPage() {
               {error ? <div className={styles.errorBanner}>Unable to complete request: {error}</div> : null}
             </form>
 
-            <section className={styles.examplesSection}>
-              <div className={styles.sectionEyebrow}>Quick prompts</div>
+            <div ref={messagesPaneRef} className={styles.messagesPane}>
+              {!hasAskedQuestion ? <EmptyConversationState onApply={applyExample} /> : null}
+              {messages.map((message, index) => (
+                <MessageBubble key={`${message.role}-${index}`} message={message} />
+              ))}
+              {loading ? <LoadingBubble /> : null}
+            </div>
+
+            <details className={styles.examplesSection}>
+              <summary>
+                <span>Quick prompts</span>
+                <small>Use an example if you are not sure how to start.</small>
+              </summary>
               <div className={styles.examplesGrid}>
                 {EXAMPLE_GROUPS.map((group) => (
                   <div key={group.title} className={styles.exampleCard}>
@@ -447,20 +497,18 @@ export default function ChatPage() {
                   </div>
                 ))}
               </div>
-            </section>
-
-            <div ref={messagesPaneRef} className={styles.messagesPane}>
-              {!hasAskedQuestion ? <EmptyConversationState onApply={applyExample} /> : null}
-              {messages.map((message, index) => (
-                <MessageBubble key={`${message.role}-${index}`} message={message} />
-              ))}
-              {loading ? <LoadingBubble /> : null}
-            </div>
+            </details>
           </section>
 
           <aside className={styles.sidebar}>
             <section className={styles.sidebarCard}>
-              <div className={styles.sectionEyebrow}>Current result</div>
+              <div className={styles.sidebarCardHeader}>
+                <div className={styles.sectionEyebrow}>Current result</div>
+                <div className={styles.utilityActions}>
+                  {latestCopyText ? <CopySummaryButton text={latestCopyText} /> : null}
+                  <SaveButton item={savedChatItem} />
+                </div>
+              </div>
               <h3>Category and confidence</h3>
               <div className={styles.statGrid}>
                 <div className={styles.statCard}>

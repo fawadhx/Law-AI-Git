@@ -117,6 +117,8 @@ class AdminSourceDetailResponse(BaseModel):
     companion_records: list[AdminLinkedRecord] = Field(default_factory=list)
     same_group_records: list[AdminLinkedRecord] = Field(default_factory=list)
     same_law_records: list[AdminLinkedRecord] = Field(default_factory=list)
+    version_count: int = 0
+    latest_version_number: int | None = None
     workflow_note: str
 
 
@@ -316,6 +318,29 @@ class AdminActivityFeedResponse(BaseModel):
     publish_event_count: int
     latest_publish_label: str | None = None
     items: list[AdminActivityRecord] = Field(default_factory=list)
+    workflow_note: str
+
+
+class AdminSourceVersionRecord(BaseModel):
+    version_id: str
+    record_id: str
+    version_number: int
+    action: str
+    citation_label: str
+    title: str
+    changed_fields: list[AdminDraftFieldChange] = Field(default_factory=list)
+    changed_field_count: int = 0
+    actor_username: str | None = None
+    actor_role: str | None = None
+    audit_id: str | None = None
+    created_at: str
+
+
+class AdminSourceHistoryResponse(BaseModel):
+    record_id: str | None = None
+    total_versions: int
+    latest_version_number: int | None = None
+    items: list[AdminSourceVersionRecord] = Field(default_factory=list)
     workflow_note: str
 
 

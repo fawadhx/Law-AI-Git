@@ -45,6 +45,7 @@ from app.schemas.admin import (
     AdminRetrievalProbeResponse,
     AdminSourceCreateResponse,
     AdminSourceDeleteResponse,
+    AdminSourceHistoryResponse,
     AdminSourceUpdateResponse,
 )
 from app.schemas.legal_source import LegalSourceRecord
@@ -67,6 +68,12 @@ from app.services.admin_audit_service import (
     count_admin_audit_events,
     list_admin_audit_events,
     write_admin_audit_event,
+)
+from app.services.legal_source_version_service import (
+    get_legal_source_history,
+    get_recent_legal_source_history,
+    record_legal_source_delete_version,
+    record_legal_source_version,
 )
 from app.services.legal_retrieval_service import get_retrieval_probe
 
@@ -772,6 +779,7 @@ def get_admin_source_detail(source_id: str) -> AdminSourceDetailResponse | None:
     same_group_records = _same_group_records(record, excluded_ids, active_records)
     excluded_ids.update(linked.id for linked in same_group_records)
     same_law_records = _same_law_records(record, excluded_ids, active_records)
+    history = get_legal_source_history(source_id, limit=5)
 
     return AdminSourceDetailResponse(
         item=_detail_record(record, companion_records, same_group_records, same_law_records),
@@ -779,6 +787,8 @@ def get_admin_source_detail(source_id: str) -> AdminSourceDetailResponse | None:
         companion_records=companion_records,
         same_group_records=same_group_records,
         same_law_records=same_law_records,
+        version_count=history.total_versions,
+        latest_version_number=history.latest_version_number,
         workflow_note=(
             "Use this detail view to validate excerpt quality, searchable wording, and section pairings. "
             "When PostgreSQL is seeded, this panel now reads from the persisted source catalog instead of only the in-memory list."
@@ -1134,7 +1144,7 @@ def create_admin_source_record(payload: AdminSourceDraftInput) -> AdminSourceCre
     else:
         refresh_persisted_retrieval_metadata(force_all=False)
 
-    _log_activity(
+    activity = _log_activity(
         kind="create",
         title="Created legal source record",
         detail=(
@@ -1144,6 +1154,26 @@ def create_admin_source_record(payload: AdminSourceDraftInput) -> AdminSourceCre
         status="created",
         citation_label=saved_record.citation_label,
         record_id=saved_record.id,
+    )
+    version = record_legal_source_version(
+        action="create",
+        record=saved_record,
+        before=None,
+        audit_id=activity.activity_id,
+    )
+    write_admin_audit_event(
+        kind="version",
+        title="Created source version",
+        detail=f"Created version {version.version_number} for {saved_record.citation_label}.",
+        status="versioned",
+        citation_label=saved_record.citation_label,
+        record_id=saved_record.id,
+        metadata={
+            "version_id": version.version_id,
+            "version_number": version.version_number,
+            "action": version.action,
+            "changed_field_count": version.changed_field_count,
+        },
     )
 
     return AdminSourceCreateResponse(
@@ -1225,7 +1255,7 @@ def update_admin_source_record(record_id: str, payload: AdminSourceDraftInput) -
     else:
         refresh_persisted_retrieval_metadata(force_all=False)
 
-    _log_activity(
+    activity = _log_activity(
         kind="update",
         title="Updated legal source record",
         detail=(
@@ -1239,6 +1269,29 @@ def update_admin_source_record(record_id: str, payload: AdminSourceDraftInput) -
         status="updated",
         citation_label=saved_record.citation_label,
         record_id=saved_record.id,
+    )
+    version = record_legal_source_version(
+        action="update",
+        record=saved_record,
+        before=existing_record,
+        audit_id=activity.activity_id,
+    )
+    write_admin_audit_event(
+        kind="version",
+        title="Created source version",
+        detail=(
+            f"Created version {version.version_number} for {saved_record.citation_label} "
+            f"with {version.changed_field_count} changed field(s)."
+        ),
+        status="versioned",
+        citation_label=saved_record.citation_label,
+        record_id=saved_record.id,
+        metadata={
+            "version_id": version.version_id,
+            "version_number": version.version_number,
+            "action": version.action,
+            "changed_field_count": version.changed_field_count,
+        },
     )
 
     return AdminSourceUpdateResponse(
@@ -1293,7 +1346,7 @@ def delete_admin_source_record(record_id: str) -> AdminSourceDeleteResponse:
     else:
         refresh_persisted_retrieval_metadata(force_all=False)
 
-    _log_activity(
+    activity = _log_activity(
         kind="delete",
         title="Deleted legal source record",
         detail=(
@@ -1303,6 +1356,21 @@ def delete_admin_source_record(record_id: str) -> AdminSourceDeleteResponse:
         status="deleted",
         citation_label=existing_record.citation_label,
         record_id=record_id,
+    )
+    version = record_legal_source_delete_version(record=existing_record, audit_id=activity.activity_id)
+    write_admin_audit_event(
+        kind="version",
+        title="Created delete version",
+        detail=f"Created delete version {version.version_number} for {existing_record.citation_label}.",
+        status="versioned",
+        citation_label=existing_record.citation_label,
+        record_id=record_id,
+        metadata={
+            "version_id": version.version_id,
+            "version_number": version.version_number,
+            "action": version.action,
+            "changed_field_count": version.changed_field_count,
+        },
     )
 
     return AdminSourceDeleteResponse(
@@ -1930,6 +1998,14 @@ def get_admin_activity_feed() -> AdminActivityFeedResponse:
     )
 
 
+def get_admin_source_history(source_id: str) -> AdminSourceHistoryResponse:
+    return get_legal_source_history(source_id, limit=20)
+
+
+def get_admin_recent_source_history() -> AdminSourceHistoryResponse:
+    return get_recent_legal_source_history(limit=30)
+
+
 def get_admin_retrieval_readiness() -> AdminRetrievalReadinessResponse:
     audit = get_persisted_retrieval_readiness_audit()
     return AdminRetrievalReadinessResponse(
@@ -2075,9 +2151,10 @@ def publish_admin_workspace_package(package_id: str) -> AdminPublishExecutionRes
         raise ValueError("This staged package does not have a clean publish preview state yet.")
     if package.publish_mode == "update_existing_record" and not package.target_record_id:
         raise ValueError("This update package is missing its target record id and cannot be published safely.")
+    existing_record = None
     if package.publish_mode == "update_existing_record":
-        target_exists = _record_index(_active_records()).get(package.target_record_id or "")
-        if target_exists is None:
+        existing_record = _record_index(_active_records()).get(package.target_record_id or "")
+        if existing_record is None:
             raise ValueError("The target live record for this update package no longer exists.")
     if package.changed_field_count <= 0:
         raise ValueError("Publishing without any changed fields is blocked to avoid no-op live mutations.")
@@ -2099,6 +2176,30 @@ def publish_admin_workspace_package(package_id: str) -> AdminPublishExecutionRes
         status="published",
         citation_label=published_record.citation_label,
         record_id=published_record.id,
+    )
+    version = record_legal_source_version(
+        action="publish",
+        record=published_record,
+        before=existing_record,
+        audit_id=activity.activity_id,
+    )
+    write_admin_audit_event(
+        kind="version",
+        title="Created publish version",
+        detail=(
+            f"Created version {version.version_number} for {published_record.citation_label} "
+            f"from staged package {package_id}."
+        ),
+        status="versioned",
+        citation_label=published_record.citation_label,
+        record_id=published_record.id,
+        metadata={
+            "version_id": version.version_id,
+            "version_number": version.version_number,
+            "action": version.action,
+            "changed_field_count": version.changed_field_count,
+            "package_id": package_id,
+        },
     )
 
     if package.workspace_draft_id and package.workspace_draft_id in WORKSPACE_DRAFT_STORE:

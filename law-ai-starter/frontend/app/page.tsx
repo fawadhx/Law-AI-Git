@@ -57,10 +57,22 @@ const rightsCards: RightsCard[] = [
 ];
 
 const trendingTopics = [
-  "FIR and complaint process",
-  "Traffic stop questions",
-  "Tenant and landlord disputes",
-  "Salary and wage issues",
+  {
+    label: "FIR and complaint process",
+    href: `/chat?q=${encodeURIComponent("FIR and complaint process")}`,
+  },
+  {
+    label: "Officer authority lookup",
+    href: "/officer-authority",
+  },
+  {
+    label: "Citation formats",
+    href: "/citations-drafting",
+  },
+  {
+    label: "Case order summaries",
+    href: "/case-studies",
+  },
 ];
 
 const trustPoints = [
@@ -88,8 +100,8 @@ export default function HomePage() {
               <div className={styles.heroPill}>Pakistan legal information, made clearer</div>
               <h1>Search Pakistan legal information quickly.</h1>
               <p className={styles.heroBody}>
-                Law AI helps people move straight into guided legal-information search, source
-                trails, and authority questions without wading through extra marketing layers.
+                Start with a question, authority lookup, citation format, or case/order summary
+                and move directly into the working tools.
               </p>
 
               <form action="/chat" method="get" className={styles.searchCard}>
@@ -114,11 +126,11 @@ export default function HomePage() {
                 <div className={styles.trendingChips}>
                   {trendingTopics.map((topic) => (
                     <Link
-                      key={topic}
-                      href={`/chat?q=${encodeURIComponent(topic)}`}
+                      key={topic.label}
+                      href={topic.href}
                       className={styles.trendingChip}
                     >
-                      {topic}
+                      {topic.label}
                     </Link>
                   ))}
                 </div>

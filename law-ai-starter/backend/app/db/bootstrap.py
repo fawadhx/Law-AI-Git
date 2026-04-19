@@ -11,6 +11,7 @@ from app.db.models import (
     LegalInstrumentVersionORM,
     LegalProvisionORM,
     LegalSourceORM,
+    LegalSourceVersionORM,
 )
 from app.db.session import get_database_status, get_engine, get_session_factory
 

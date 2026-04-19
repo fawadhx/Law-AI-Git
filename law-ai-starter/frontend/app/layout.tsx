@@ -63,6 +63,9 @@ export default function RootLayout({
                 <Link href="/case-studies" className="nav-link">
                   Case Studies
                 </Link>
+                <Link href="/saved" className="nav-link">
+                  Saved
+                </Link>
                 <Link href="/admin" className="nav-link">
                   Admin
                 </Link>
@@ -97,6 +100,9 @@ export default function RootLayout({
                 </Link>
                 <Link href="/case-studies" className="footer-link">
                   Case Studies
+                </Link>
+                <Link href="/saved" className="footer-link">
+                  Saved
                 </Link>
                 <Link href="/admin" className="footer-link">
                   Admin

@@ -155,6 +155,8 @@
 
 .workspaceIntro {
   max-width: 42rem;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 .workspaceHeader h2,
@@ -415,12 +417,48 @@
 .examplesSection {
   display: grid;
   gap: 10px;
+  border: var(--public-card-border);
+  border-radius: var(--public-panel-radius);
+  background: var(--theme-surface-muted);
+  padding: 12px 14px;
+}
+
+.examplesSection summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--theme-heading);
+  font-weight: 700;
+  list-style: none;
+}
+
+.examplesSection summary::-webkit-details-marker {
+  display: none;
+}
+
+.examplesSection summary::after {
+  content: "+";
+  color: var(--theme-text-muted);
+  font-weight: 800;
+}
+
+.examplesSection[open] summary::after {
+  content: "-";
+}
+
+.examplesSection summary small {
+  color: var(--theme-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .examplesGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  padding-top: 10px;
 }
 
 .exampleCard {
@@ -446,6 +484,20 @@
   padding: 18px;
   display: grid;
   gap: 14px;
+}
+
+.sidebarCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.utilityActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .sidebarCard h3 {
@@ -621,5 +673,10 @@
 
   .userBubble {
     max-width: 100%;
+  }
+
+  .examplesSection summary {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

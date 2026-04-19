@@ -23,6 +23,7 @@
 .referenceItem span,
 .emptyState,
 .list,
+.filterSummary,
 .errorBanner {
   margin: 0;
   color: var(--theme-text-secondary);
@@ -144,6 +145,69 @@
   margin-bottom: 14px;
 }
 
+.discoveryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.discoveryField,
+.selectField select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--theme-input-border);
+  border-radius: 14px;
+  background: var(--theme-input-bg);
+  color: var(--theme-input-text);
+  font-size: 14px;
+  outline: none;
+}
+
+.discoveryField::placeholder {
+  color: var(--theme-input-placeholder);
+}
+
+.discoveryField:focus,
+.selectField select:focus {
+  border-color: var(--theme-pill-border);
+  box-shadow: 0 0 0 4px var(--theme-focus-ring);
+}
+
+.selectField {
+  display: grid;
+  gap: 8px;
+  color: var(--theme-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.filterSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: var(--public-card-border);
+  border-radius: 16px;
+  background: var(--theme-surface-muted);
+  font-size: 13px;
+}
+
+.filterSummary button {
+  border: 1px solid var(--theme-button-secondary-border);
+  border-radius: 999px;
+  background: var(--theme-button-secondary-bg);
+  color: var(--theme-button-secondary-text);
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
 .field::placeholder {
   color: var(--theme-input-placeholder);
 }
@@ -155,6 +219,10 @@
 
 .quickSection {
   margin-top: 16px;
+  padding: 14px;
+  border: var(--public-card-border);
+  border-radius: var(--public-panel-radius);
+  background: var(--theme-surface-muted);
 }
 
 .rankChips {
@@ -165,13 +233,25 @@
 }
 
 .rankChip {
-  min-height: 36px;
-  padding: 0 14px;
+  min-height: 44px;
+  padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--theme-chip-border);
   background: var(--theme-chip-bg);
   color: var(--theme-chip-text);
   cursor: pointer;
+  display: inline-grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.rankChip span {
+  font-weight: 700;
+}
+
+.rankChip small {
+  color: var(--theme-text-muted);
+  font-size: 11px;
 }
 
 .errorBanner {
@@ -195,11 +275,21 @@
 
 .emptyState {
   padding: 18px;
+  display: grid;
+  gap: 8px;
 }
 
 .resultStack {
   display: grid;
   gap: 14px;
+}
+
+.resultHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .summaryPanel,
@@ -260,7 +350,8 @@
 @media (max-width: 980px) {
   .layoutGrid,
   .dualGrid,
-  .referenceGrid {
+  .referenceGrid,
+  .discoveryGrid {
     grid-template-columns: 1fr;
   }
 }

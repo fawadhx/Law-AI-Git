@@ -1,0 +1,277 @@
+.page {
+  min-height: 100%;
+  background: var(--theme-page-bg);
+  color: var(--theme-text);
+  padding: 26px 0 44px;
+}
+
+.shell {
+  width: var(--public-shell-width);
+  margin: 0 auto;
+}
+
+.workspace,
+.controlCard,
+.emptyState,
+.groupSection,
+.savedCard {
+  border: var(--public-card-border);
+  background: var(--theme-surface);
+  box-shadow: var(--theme-shadow);
+}
+
+.workspace {
+  border-radius: 28px;
+  padding: 20px;
+  display: grid;
+  gap: 18px;
+}
+
+.topBar,
+.controlHead,
+.groupHeader,
+.cardMeta,
+.cardActions,
+.tagRow,
+.emptyLinks,
+.typeSummary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.topBar,
+.controlHead,
+.groupHeader,
+.cardActions {
+  justify-content: space-between;
+}
+
+.topBar h1,
+.emptyState h2,
+.groupHeader h2,
+.savedCard h3 {
+  margin: 0;
+  color: var(--theme-heading);
+  line-height: 1.16;
+}
+
+.topBar h1 {
+  font-size: clamp(28px, 4vw, 36px);
+}
+
+.emptyState h2,
+.groupHeader h2 {
+  font-size: 22px;
+}
+
+.savedCard h3 {
+  font-size: 18px;
+}
+
+.sectionEyebrow {
+  color: var(--theme-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sectionText,
+.emptyState p,
+.savedCard p,
+.subtitle,
+.cardMeta {
+  margin: 0;
+  color: var(--theme-text-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.topLinks {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cardActions a,
+.cardActions button,
+.emptyLinks a,
+.emptyLinks button,
+.typeChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--theme-button-secondary-border);
+  border-radius: 999px;
+  background: var(--theme-button-secondary-bg);
+  color: var(--theme-button-secondary-text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.emptyLinks button,
+.typeChip {
+  font: inherit;
+}
+
+.controlCard,
+.emptyState,
+.groupSection {
+  border-radius: 24px;
+  padding: 18px;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 12px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+.typeSummary {
+  margin-top: 12px;
+}
+
+.typeChipActive {
+  border-color: var(--theme-border-strong);
+  background: var(--theme-surface-strong);
+}
+
+.searchInput,
+.selectField select {
+  width: 100%;
+  border: 1px solid var(--theme-input-border);
+  background: var(--theme-input-bg);
+  color: var(--theme-input-text);
+  border-radius: 16px;
+  outline: none;
+}
+
+.searchInput {
+  min-height: 48px;
+  padding: 0 16px;
+}
+
+.selectField {
+  display: grid;
+  gap: 7px;
+  color: var(--theme-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.selectField select {
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.searchInput:focus,
+.selectField select:focus {
+  border-color: var(--theme-border-strong);
+  box-shadow: 0 0 0 4px var(--theme-focus-ring);
+}
+
+.resultCount,
+.kindBadge,
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--theme-pill-border);
+  background: var(--theme-pill-bg);
+  color: var(--theme-pill-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.resultCount,
+.kindBadge {
+  padding: 0 10px;
+}
+
+.tagChip {
+  padding: 0 9px;
+  background: var(--theme-pill-muted-bg);
+  color: var(--theme-pill-muted-text);
+}
+
+.emptyState {
+  display: grid;
+  gap: 12px;
+}
+
+.groupStack {
+  display: grid;
+  gap: 18px;
+}
+
+.groupSection {
+  display: grid;
+  gap: 14px;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.savedCard {
+  border-radius: 20px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.cardMeta {
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.cardActions {
+  margin-top: 4px;
+}
+
+.cardActions button {
+  font: inherit;
+}
+
+@media (max-width: 820px) {
+  .filterGrid,
+  .cardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cardActions a,
+  .cardActions button,
+  .emptyLinks a,
+  .emptyLinks button,
+  .typeChip {
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding-top: 14px;
+  }
+
+  .shell {
+    width: min(100% - 24px, 1200px);
+  }
+
+  .workspace {
+    padding: 14px;
+    border-radius: 22px;
+  }
+}

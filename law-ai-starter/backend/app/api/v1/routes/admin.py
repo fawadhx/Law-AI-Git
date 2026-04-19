@@ -20,6 +20,7 @@ from app.schemas.admin import (
     AdminSourceCreateResponse,
     AdminSourceDeleteResponse,
     AdminSourceDetailResponse,
+    AdminSourceHistoryResponse,
     AdminSourceUpdateResponse,
     AdminSourceDraftInput,
     AdminSourceDraftReviewResponse,
@@ -38,6 +39,8 @@ from app.services.admin_service import (
     delete_admin_workspace_draft,
     delete_admin_workspace_publish_package,
     get_admin_activity_feed,
+    get_admin_recent_source_history,
+    get_admin_source_history,
     get_admin_source_catalog,
     create_admin_source_record,
     delete_admin_source_record,
@@ -79,6 +82,41 @@ def admin_source_detail(source_id: str) -> AdminSourceDetailResponse:
     if detail is None:
         raise HTTPException(status_code=404, detail="Source record not found.")
     return detail
+
+
+@router.get("/admin/sources/{source_id}/history", response_model=AdminSourceHistoryResponse)
+def admin_source_history(source_id: str) -> AdminSourceHistoryResponse:
+    return get_admin_source_history(source_id)
+
+
+@router.get("/admin/source-history/recent", response_model=AdminSourceHistoryResponse)
+def admin_recent_source_history() -> AdminSourceHistoryResponse:
+    return get_admin_recent_source_history()
+
+
+@router.post("/admin/source-records", response_model=AdminSourceCreateResponse)
+def admin_source_record_create(
+    payload: AdminSourceDraftInput,
+    _: object = Depends(require_admin_write_access),
+) -> AdminSourceCreateResponse:
+    return create_admin_source_record(payload)
+
+
+@router.put("/admin/source-records/{record_id}", response_model=AdminSourceUpdateResponse)
+def admin_source_record_update(
+    record_id: str,
+    payload: AdminSourceDraftInput,
+    _: object = Depends(require_admin_write_access),
+) -> AdminSourceUpdateResponse:
+    return update_admin_source_record(record_id, payload)
+
+
+@router.delete("/admin/source-records/{record_id}", response_model=AdminSourceDeleteResponse)
+def admin_source_record_delete(
+    record_id: str,
+    _: object = Depends(require_admin_write_access),
+) -> AdminSourceDeleteResponse:
+    return delete_admin_source_record(record_id)
 
 
 @router.post("/admin/sources/validate", response_model=AdminSourceDraftValidationResponse)

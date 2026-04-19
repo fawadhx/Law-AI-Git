@@ -35,6 +35,10 @@ def set_current_admin_audit_context(user: AdminSessionUser, *, route_path: str |
     )
 
 
+def get_current_admin_audit_context() -> dict[str, str]:
+    return dict(_current_admin_audit_context.get() or {})
+
+
 def _activity_from_orm(row: AdminAuditEventORM) -> AdminActivityRecord:
     actor_label = row.actor_display_name or row.actor_username
     detail = row.detail

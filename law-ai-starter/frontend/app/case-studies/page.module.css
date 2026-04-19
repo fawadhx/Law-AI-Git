@@ -56,8 +56,10 @@
 
 .topLinks,
 .filterGrid,
+.primaryFilterGrid,
 .tagRow,
-.issueLine {
+.issueLine,
+.filterSummary {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -65,7 +67,12 @@
 
 .filterGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.primaryFilterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .topBarText {
@@ -184,6 +191,33 @@
   box-shadow: 0 0 0 4px var(--theme-focus-ring);
 }
 
+.filterSummary {
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: var(--public-card-border);
+  border-radius: 16px;
+  background: var(--theme-surface-muted);
+  color: var(--theme-text-secondary);
+  font-size: 13px;
+}
+
+.filterSummary span {
+  margin-right: auto;
+}
+
+.filterSummary button {
+  border: 1px solid var(--theme-button-secondary-border);
+  border-radius: 999px;
+  background: var(--theme-button-secondary-bg);
+  color: var(--theme-button-secondary-text);
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
 .quickStats,
 .primerGrid {
   display: grid;
@@ -245,6 +279,7 @@
 .timelineItem,
 .issueCard,
 .linkedLawItem,
+.utilityPanel,
 .emptyState {
   border: var(--public-card-border);
   border-radius: var(--public-panel-radius);
@@ -355,6 +390,49 @@
   gap: 12px;
 }
 
+.utilityPanel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--theme-surface-muted);
+}
+
+.utilityDetails {
+  display: grid;
+  gap: 12px;
+}
+
+.utilityDetails summary {
+  cursor: pointer;
+  color: var(--theme-heading);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.utilityDetails[open] {
+  padding-top: 2px;
+}
+
+.utilityDetails > * + * {
+  margin-top: 12px;
+}
+
+.emptyState button {
+  border: 0;
+  background: transparent;
+  color: var(--theme-button-secondary-text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.emptyState span {
+  color: var(--theme-heading);
+  font-weight: 700;
+}
+
 .metaGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -453,6 +531,11 @@
   .primerGrid {
     grid-template-columns: 1fr;
   }
+
+  .filterGrid,
+  .primaryFilterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -469,6 +552,7 @@
   }
 
   .filterGrid,
+  .primaryFilterGrid,
   .metaGrid,
   .timelineItem,
   .issueGrid {

@@ -28,5 +28,7 @@ describe("public shell", () => {
     expect(markup).toContain("Citations &amp; Drafting");
     expect(markup).toContain('href="/case-studies"');
     expect(markup).toContain("Case Studies");
+    expect(markup).toContain('href="/saved"');
+    expect(markup).toContain("Saved");
   });
 });
